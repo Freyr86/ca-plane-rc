@@ -11,6 +11,7 @@
     }
   ],
   "Plugins": [
+    {"Name":"AndroidFileServer","Enabled":false},
     {"Name":"PCGBiomeSample","Enabled":true},
     {
       "Name": "ProceduralMeshComponent",
