@@ -23,7 +23,13 @@ public:
     static constexpr float PilotX = 6400.f;
     static constexpr float PilotY = -1800.f;
     virtual void OnConstruction(const FTransform& Transform) override;
+    virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
+    static constexpr int32 MinGrassDistance = 20;
+    static constexpr int32 MaxGrassDistance = 500;
+    static int32 SavedGrassDistanceMeters();
+    void SetGrassDistanceMeters(int32 Meters,bool Visible=true);
+    int32 GrassDistanceMeters() const { return GrassDistance; }
 
     UFUNCTION(BlueprintPure)
     static float TerrainHeightCm(float X, float Y);
@@ -55,11 +61,29 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UInstancedStaticMeshComponent>> FieldPatches;
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UInstancedStaticMeshComponent>> PilotGrass;
+    int32 GrassDistance = 50;
+    int32 FieldWidth = 0;
     TArray<FIntPoint> FieldTiles;
     FIntPoint LastGrassCentre = FIntPoint(MAX_int32,MAX_int32);
     void UpdateFieldGrass(const FVector& Eye);
-    void PlantFieldTile(FIntPoint Tile,int32 Slot);
+    FIntPoint LastDetailCentre = FIntPoint(MAX_int32,MAX_int32);
+    TMap<FIntPoint,TArray<FVector>> Crowns;
+    float CrownCover(float X,float Y) const;
+    void PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail);
 
+    int32 LastSolarMinutes=-1, LastSky=-1;
+    UPROPERTY(Transient)
+    UMaterialInstanceDynamic* WeatherClouds=nullptr;
+    void BuildLaunchSite();
+    void UpdateWindsock(float DeltaSeconds, double WeatherTime);
+    UPROPERTY(Transient)
+    UProceduralMeshComponent* Windsock=nullptr;
+    FVector SockPivot=FVector::ZeroVector;
+    FVector SockFlow=FVector::ZeroVector;
+    bool bSockInitialized=false;
+    void UpdateSky();
     void BuildTerrain();
     void BuildLake();
     void BuildTerrainSection(int32 Section, int32 Cells, float Spacing, FVector2D Origin, FBox2D Hole, float BorderStep);

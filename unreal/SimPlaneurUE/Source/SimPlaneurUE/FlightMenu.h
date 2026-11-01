@@ -3,6 +3,7 @@
 #include "Widgets/SCompoundWidget.h"
 #include "GliderControls.h"
 #include "GliderDynamics.h"
+#include "ValleyAir.h"
 #include "GenericPlatform/GenericWindow.h"
 
 class ASlopeFlightPawn;
@@ -28,7 +29,7 @@ public:
     FGliderControlGains DraftControlGains() const { return DraftGains; }
 
 private:
-    enum class EPage { Home, Hangar, Devices, Graphics };
+    enum class EPage { Home, Hangar, Devices, Graphics, Weather };
     TWeakObjectPtr<ASlopeFlightPawn> Plane;
     TSharedPtr<SBox> Body;
     TSharedPtr<SButton> First;
@@ -39,12 +40,15 @@ private:
     FString Message, Version;
     FGliderLoading DraftLoading;
     FGliderControlGains DraftGains;
+    ValleyAir::FWeatherSettings DraftWeather;
     bool bAdvancedModel = false;
     bool bDraftAileronSteering = false;
     EWindowMode::Type Mode = EWindowMode::Windowed, PreviousMode = EWindowMode::Windowed;
     FIntPoint Size = FIntPoint::ZeroValue, PreviousSize = FIntPoint::ZeroValue;
     TArray<FIntPoint> Sizes;
     int32 Quality = -1;
+    int32 GrassDistance = 50, TrailDistance = 90;
+    bool ShowGrass=true, ShowTrails=true;
     bool bVsync = false;
     double ConfirmUntil = 0.;
     void Go(EPage Target);
@@ -55,6 +59,7 @@ private:
     void AdvancedModel(SVerticalBox& List);
     void Devices(SVerticalBox& List);
     void Graphics(SVerticalBox& List);
+    void Weather(SVerticalBox& List);
     void FindSizes();
     void Apply();
     void SaveGraphics();

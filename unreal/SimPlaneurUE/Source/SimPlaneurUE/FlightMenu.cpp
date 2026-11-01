@@ -1,6 +1,8 @@
 #include "FlightMenu.h"
 #include "Rendering/SlateRenderer.h"
 #include "SlopeFlightPawn.h"
+#include "SlopeWorld.h"
+#include "EngineUtils.h"
 #include "Engine/Engine.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
@@ -10,6 +12,7 @@
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -279,11 +282,17 @@ void SFlightMenu::Go(EPage Target)
     Plane->ShowHangarModel(Page==EPage::Hangar);
     Message.Empty();
     if (Page==EPage::Devices) Plane->Radio.Scan();
+    if (Page==EPage::Weather) DraftWeather=ValleyAir::Settings();
     if (Page==EPage::Graphics)
     {
         UGameUserSettings* G=GEngine->GetGameUserSettings();
         Mode=G->GetFullscreenMode(); Size=G->GetScreenResolution();
         Quality=G->GetOverallScalabilityLevel(); bVsync=G->IsVSyncEnabled();
+        GrassDistance=ASlopeWorld::SavedGrassDistanceMeters();
+        ShowGrass=true;
+        GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowGrass"),ShowGrass,GGameUserSettingsIni);
+        TrailDistance=Plane->TrailDistance;
+        ShowTrails=Plane->TrailsVisible();
         FindSizes();
     }
     Build();
@@ -298,11 +307,12 @@ void SFlightMenu::Build()
     else
     {
         Add(*List,Text(TEXT("ÇA PLANE !     /     CLUB RC"),10,Gold,TEXT("Bold")),6);
-        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Devices ? TEXT("Périphériques") : TEXT("Graphismes");
+        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : TEXT("Graphismes");
         Add(*List,Text(Title,29,Paper,TEXT("Bold")),12);
         if (Page==EPage::Hangar) Hangar(*List);
         if (Page==EPage::Devices) Devices(*List);
         if (Page==EPage::Graphics) Graphics(*List);
+        if (Page==EPage::Weather) Weather(*List);
         if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),TEXT("Retour au menu"),[this]{Go(EPage::Home);}));
     }
     Body->SetContent(List);
@@ -331,6 +341,7 @@ void SFlightMenu::Home(SVerticalBox& List)
     ExploreButton->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
     Add(List,ExploreButton,4);
     Add(List,Button(TEXT("Hangar"),TEXT("Choisir le planeur"),[this]{Go(EPage::Hangar);}),4);
+    Add(List,Button(TEXT("Weather"),TEXT("Météo et ascendances"),[this]{Go(EPage::Weather);}),4);
     Add(List,Button(TEXT("Devices"),TEXT("Périphériques"),[this]{Go(EPage::Devices);}),4);
     Add(List,Button(TEXT("Graphics"),TEXT("Graphismes"),[this]{Go(EPage::Graphics);}),4);
     Add(List,Button(TEXT("Quit"),TEXT("Quitter"),[this]{
@@ -571,8 +582,57 @@ void SFlightMenu::Graphics(SVerticalBox& List)
         [this](int32 S){Quality=Quality<0?2:(Quality+S+5)%5;Message.Empty();}),10);
     Add(List,Choice(TEXT("SYNCHRONISATION VERTICALE"),[this]{return FString(bVsync?TEXT("Activée"):TEXT("Désactivée"));},
         [this](int32){bVsync=!bVsync;Message.Empty();}),12);
+    auto RangeRow=[this,&List](const TCHAR* Label,FName SliderTag,bool& Visible,int32& Meters)
+    {
+        Add(List,Text(Label,12,Light,TEXT("Bold")),3);
+        Add(List,SNew(SHorizontalBox)
+            +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,10,0)
+            [SNew(SCheckBox).IsChecked_Lambda([&Visible]{return Visible?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+                .OnCheckStateChanged_Lambda([this,&Visible](ECheckBoxState State){Visible=State==ECheckBoxState::Checked; Message.Empty();})]
+            +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [SNew(SSlider).Tag(SliderTag).MinValue(20.f).MaxValue(500.f).StepSize(1.f).MouseUsesStep(true)
+                .IsEnabled_Lambda([&Visible]{return Visible;}).Value_Lambda([&Meters]{return float(Meters);})
+                .OnValueChanged_Lambda([this,&Meters](float Value){Meters=FMath::Clamp(FMath::RoundToInt(Value),20,500);Message.Empty();})]
+            +SHorizontalBox::Slot().AutoWidth().Padding(10,0,0,0)
+            [Live([&Meters]{return FString::Printf(TEXT("%d m"),Meters);},13)],12);
+    };
+    RangeRow(TEXT("DISTANCE DE L’HERBE"),TEXT("GrassRange"),ShowGrass,GrassDistance);
+    RangeRow(TEXT("DISTANCE DES FILETS D’AIR"),TEXT("TrailRange"),ShowTrails,TrailDistance);
     Add(List,Live([this]{return !Message.IsEmpty()?Message:Mode==EWindowMode::WindowedFullscreen?FString(TEXT("Sans bordure : résolution du bureau.")):FString();},11,Light),6);
     Add(List,Button(TEXT("Apply"),TEXT("Appliquer"),[this]{Apply();},true),5);
+}
+
+void SFlightMenu::Weather(SVerticalBox& List)
+{
+    Add(List,Choice(TEXT("HEURE SOLAIRE"),[this]{return FString::Printf(TEXT("%02d h %02d"),DraftWeather.SolarMinutes/60,DraftWeather.SolarMinutes%60);},
+        [this](int32 Step){DraftWeather.SolarMinutes=(DraftWeather.SolarMinutes+Step*30+1440)%1440;Message.Empty();}),10);
+    Add(List,Choice(TEXT("ÉTAT DU CIEL"),[this]{
+        const TCHAR* Names[]={TEXT("Dégagé"),TEXT("Éclaircies"),TEXT("Couvert"),TEXT("Brumeux")};
+        return FString(Names[DraftWeather.Sky]);},
+        [this](int32 Step){DraftWeather.Sky=(DraftWeather.Sky+Step+4)%4;Message.Empty();}),10);
+    Add(List,Choice(TEXT("FORCE DU VENT"),[this]{return FString::Printf(TEXT("%.1f m/s · %.0f km/h"),DraftWeather.WindSpeedMps,3.6*DraftWeather.WindSpeedMps);},
+        [this](int32 S){DraftWeather.WindSpeedMps=FMath::Clamp(DraftWeather.WindSpeedMps+.5*S,0.,10.);Message.Empty();}),10);
+    Add(List,Choice(TEXT("VENT VENANT DU"),[this]{return FString::Printf(TEXT("%03d°"),FMath::RoundToInt(DraftWeather.WindFromDegrees)%360);},
+        [this](int32 S){
+            const int32 Step=S>0 ? FMath::FloorToInt(DraftWeather.WindFromDegrees/15.)+1 : FMath::CeilToInt(DraftWeather.WindFromDegrees/15.)-1;
+            DraftWeather.WindFromDegrees=(Step*15+360)%360;Message.Empty();
+        }),5);
+    Add(List,Text(TEXT("Provenance : 0° nord · 90° est · 180° sud."),11,Light),12);
+    Add(List,Choice(TEXT("ACTIVITÉ THERMIQUE"),[this]{return FString::Printf(TEXT("%d %%"),FMath::RoundToInt(DraftWeather.ThermalStrength*100));},
+        [this](int32 S){DraftWeather.ThermalStrength=FMath::Clamp(DraftWeather.ThermalStrength+.25*S,0.,2.);Message.Empty();}),10);
+    Add(List,Choice(TEXT("TURBULENCE"),[this]{return FString::Printf(TEXT("%d %%"),FMath::RoundToInt(DraftWeather.Turbulence*100));},
+        [this](int32 S){DraftWeather.Turbulence=FMath::Clamp(DraftWeather.Turbulence+.1*S,0.,1.);Message.Empty();}),12);
+    Add(List,Text(TEXT("La pente porte du côté exposé au vent.\nLes thermiques dépendent du sol et de l’altitude."),11,Light),10);
+    Add(List,Live([this]{return Message;},11,Gold),6);
+    Add(List,Button(TEXT("DefaultWeather"),TEXT("Rétablir la météo de référence"),[this]{
+        DraftWeather=ValleyAir::FWeatherSettings{};Message=TEXT("Valeurs de référence prêtes à appliquer.");
+    }),5);
+    Add(List,Button(TEXT("ApplyWeather"),TEXT("Appliquer la météo"),[this]{
+        ValleyAir::SetSettings(DraftWeather);
+        ValleyAir::SaveSettings();
+        DraftWeather=ValleyAir::Settings();
+        Message=TEXT("Météo appliquée et enregistrée.");
+    },true),5);
 }
 
 void SFlightMenu::Apply()
@@ -597,6 +657,15 @@ void SFlightMenu::SaveGraphics()
     G->ApplyNonResolutionSettings();
     G->ConfirmVideoMode();
     G->SaveSettings();
+    Plane->ShowTrails(ShowTrails);
+    Plane->TrailDistance=TrailDistance;
+    GConfig->SetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),ShowTrails,GGameUserSettingsIni);
+    GConfig->SetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowGrass"),ShowGrass,GGameUserSettingsIni);
+    GConfig->SetInt(TEXT("SimPlaneur.Graphics"),TEXT("TrailDistance"),TrailDistance,GGameUserSettingsIni);
+    GConfig->SetInt(TEXT("SimPlaneur.Graphics"),TEXT("GrassDistanceMeters"),GrassDistance,GGameUserSettingsIni);
+    GConfig->Flush(false,GGameUserSettingsIni);
+    for (TActorIterator<ASlopeWorld> World(Plane->GetWorld()); World; ++World)
+        World->SetGrassDistanceMeters(GrassDistance,ShowGrass);
     Message=TEXT("Réglages enregistrés.");
     Build(); FocusFirst();
 }

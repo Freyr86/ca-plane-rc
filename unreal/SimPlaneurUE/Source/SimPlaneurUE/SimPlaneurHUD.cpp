@@ -147,7 +147,7 @@ void ASimPlaneurHUD::DrawHUD()
             ? FString::Printf(TEXT("Altitude %.1f m  •  Vitesse %.1f m/s  •  Chute %.2f m/s"), Plane->GetAltitudeM(), Plane->GetAirspeedMps(), Plane->GetSinkMps())
             : TEXT("Modèle de vol indisponible");
         TextLine(Status, Plane->IsFlightReady() ? FLinearColor::White : FLinearColor(1.0f, 0.55f, 0.20f));
-        TextLine(FString::Printf(TEXT("Pente %+.1f m/s   ·   Thermique %+.1f m/s"), Plane->GetRidgeLift(), -Plane->GetLocalWind().Z - Plane->GetRidgeLift()));
+        TextLine(FString::Printf(TEXT("Pente %+.1f m/s   ·   Thermique / rafales %+.1f m/s"), Plane->GetRidgeLift(), -Plane->GetLocalWind().Z - Plane->GetRidgeLift()));
         TextLine(Plane->GetControlMode());
         TextLine(FString::Printf(TEXT("Radio  X:%+.2f  Y:%+.2f  Z:%+.2f  Rx:%+.2f"),
             Plane->GetRadioAxis(0), Plane->GetRadioAxis(1), Plane->GetRadioAxis(2), Plane->GetRadioAxis(3)),

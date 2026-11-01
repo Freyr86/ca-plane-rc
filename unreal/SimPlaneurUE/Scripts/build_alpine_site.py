@@ -261,6 +261,8 @@ float2 side = away.xy / max(1.0,length(away.xy));
 return weight * (wind + touch*float3(16*side, -min(24.0,L.z*.65)));
 """,rgb,L=(local,""),P=(world,""),T=(node(u.MaterialExpressionTime),""),V=(variety,""),A=(aircraft,"RGB"),S=(span,"RGB"))
 bind(offset,"",mp.MP_WORLD_POSITION_OFFSET)
+import runpy
+runpy.run_path(str(Path(__file__).with_name("grass_distance_fade.py")), run_name="grass_fade")["apply_grass_fade"](mat)
 finish()
 for name in ("BentGrass","FloweringFescue","CreepingBent"):
     path = f"{folder}/{name}/StaticMeshes/{name}"

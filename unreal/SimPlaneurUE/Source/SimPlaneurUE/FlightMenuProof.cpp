@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputKeyEventArgs.h"
 #include "SlopeWorld.h"
+#include "EngineUtils.h"
 #include "ValleyLandscape.h"
 #include "Camera/CameraTypes.h"
 #include "Layout/WidgetPath.h"
@@ -126,8 +127,28 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         }
         case 8: OK=Click(TEXT("PÉRIPHÉRIQUE-")) && Click(TEXT("Back")); break;
         case 9: OK=Click(TEXT("Graphics")); break;
-        case 10: Shot(TEXT("club-graphismes.png")); OK=Click(TEXT("SYNCHRONISATION VERTICALE+")); break;
-        case 11: OK=Click(TEXT("Apply")); break;
+        case 10:
+            Shot(TEXT("club-graphismes.png"));
+            OK=Click(TEXT("SYNCHRONISATION VERTICALE+"));
+            for (FName Tag : {FName(TEXT("GrassRange")),FName(TEXT("TrailRange"))})
+            {
+                auto Slider=FindTagged(Menu.ToSharedRef(),Tag);
+                if (!Slider) { OK=false; break; }
+                const FGeometry G=Slider->GetCachedGeometry();
+                const FVector2D End=G.LocalToAbsolute(FVector2D(G.GetLocalSize().X-1,G.GetLocalSize().Y*.5f));
+                const uint32 Pointer=FSlateApplication::CursorPointerIndex;
+                Slider->OnMouseButtonDown(G,FPointerEvent(Pointer,End,End,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
+                Slider->OnMouseButtonUp(G,FPointerEvent(Pointer,End,End,{},EKeys::LeftMouseButton,0,FModifierKeysState()));
+            }
+            break;
+        case 11:
+        {
+            const int32 Expected=500;
+            OK=Click(TEXT("Apply")) && ASlopeWorld::SavedGrassDistanceMeters()==Expected;
+            TActorIterator<ASlopeWorld> World(GetWorld());
+            OK=OK && World && World->GrassDistanceMeters()==Expected && TrailDistance==Expected;
+            break;
+        }
         case 12: OK=Click(TEXT("MODE D’AFFICHAGE+")) && Click(TEXT("Apply")); break;
         case 13: OK=Click(TEXT("Revert")); break;
         case 14: OK=Click(TEXT("Back")); break;
@@ -195,6 +216,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             Shot(TEXT("hand-launch-flight.png"));
             SendKey(EKeys::SpaceBar,IE_Released); SendKey(EKeys::R,IE_Pressed); break;
         case 42:
+            Shot(TEXT("launch-site.png"));
             OK=IsHeldForLaunch() && !IsThrowing() && ContactKind.IsNone();
             SendKey(EKeys::R,IE_Released); MenuProofLocation=TargetPosition; break;
         case 43:
@@ -202,8 +224,11 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             OpenMenu(); break;
         case 44:
             OK=Click(TEXT("Explore")) && IsNoclip() && !IsMenuOpen();
+            NoclipPosition=PilotSite+FVector(780,-720,255);
+            NoclipRotation=(PilotSite+FVector(560,30,-90)-NoclipPosition).Rotation();
             MenuProofCamera=NoclipPosition; MenuProofWeather=WeatherSeconds; break;
         case 45:
+            Shot(TEXT("site-overview.png"));
             SendKey(EKeys::W,IE_Pressed); SendKey(EKeys::LeftControl,IE_Pressed);
             CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
                 nullptr,FInputDeviceId::CreateFromInternalId(0),EKeys::MouseX,100.f,.016f,1,FPlatformTime::Cycles64()));
@@ -213,9 +238,12 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 FVector::Dist(NoclipPosition,MenuProofCamera),NoclipRotation.Yaw,
                 NoclipPosition.Z-ASlopeWorld::TerrainHeightCm(NoclipPosition.X,NoclipPosition.Y),
                 FVector::Dist(TargetPosition,MenuProofLocation),WeatherSeconds-MenuProofWeather);
+            {
+            FHitResult Ground;
             OK=IsNoclip() && TargetPosition.Equals(MenuProofLocation,.01) && WeatherSeconds==MenuProofWeather
-                && FVector::Dist(NoclipPosition,MenuProofCamera)>2000. && FMath::Abs(NoclipRotation.Yaw)>1.f
-                && NoclipPosition.Z<ASlopeWorld::TerrainHeightCm(NoclipPosition.X,NoclipPosition.Y);
+                && FVector::Dist2D(NoclipPosition,MenuProofCamera)>800. && FMath::Abs(NoclipRotation.Yaw)>1.f
+                && FindPilotGround(NoclipPosition,Ground,true) && FMath::IsNearlyEqual(NoclipPosition.Z-Ground.ImpactPoint.Z,85.,1.);
+            }
             SendKey(EKeys::W,IE_Released); SendKey(EKeys::LeftControl,IE_Released);
             SendKey(EKeys::SpaceBar,IE_Pressed); SendKey(EKeys::LeftShift,IE_Pressed);
             MenuProofCamera=NoclipPosition; break;
@@ -295,7 +323,22 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             ToggleNoclip();
             OK=!IsNoclip() && IsHeldForLaunch() && PilotPosition().Equals(MenuProofCamera,.01);
             OpenMenu(); break;
-        case 59: UE_LOG(LogTemp,Display,TEXT("MENU_PROOF quit via menu")); OK=Click(TEXT("Quit")); break;
+        case 59: OK=Click(TEXT("Weather")); break;
+        case 60:
+            OK=Click(TEXT("DefaultWeather")) && Click(TEXT("HEURE SOLAIRE+")) && Click(TEXT("ÉTAT DU CIEL+")) && Click(TEXT("FORCE DU VENT+")) && Click(TEXT("VENT VENANT DU+"))
+                && Click(TEXT("ACTIVITÉ THERMIQUE-")) && Click(TEXT("TURBULENCE+")) && Click(TEXT("ApplyWeather"));
+            Shot(TEXT("club-meteo.png")); break;
+        case 61:
+        {
+            const auto Weather=ValleyAir::Settings();
+            OK=FMath::IsNearlyEqual(Weather.WindSpeedMps,5.) && FMath::IsNearlyEqual(Weather.WindFromDegrees,15.)
+                && FMath::IsNearlyEqual(Weather.ThermalStrength,.75) && FMath::IsNearlyEqual(Weather.Turbulence,.25);
+            ValleyAir::LoadSettings();
+            OK=OK && ValleyAir::Settings().SolarMinutes==870 && ValleyAir::Settings().Sky==2 && FMath::IsNearlyEqual(ValleyAir::Settings().WindSpeedMps,5.) && Click(TEXT("DefaultWeather")) && Click(TEXT("ApplyWeather"));
+            break;
+        }
+        case 62: OK=Click(TEXT("Back")); break;
+        case 63: UE_LOG(LogTemp,Display,TEXT("MENU_PROOF quit via menu")); OK=Click(TEXT("Quit")); break;
         default: OK=false; break;
     }
     UE_LOG(LogTemp,Display,TEXT("MENU_PROOF step=%d pass=%d"),MenuProofStep,OK);

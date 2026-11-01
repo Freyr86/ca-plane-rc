@@ -1,6 +1,6 @@
 param(
     [string]$EngineRoot = 'C:\Program Files\Epic Games\UE_5.8',
-    [string]$Version = '0.5.0',
+    [string]$Version = '0.5.1',
     [switch]$SkipPackage
 )
 $ErrorActionPreference = 'Stop'

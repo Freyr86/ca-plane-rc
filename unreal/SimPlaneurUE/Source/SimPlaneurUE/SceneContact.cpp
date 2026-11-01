@@ -84,7 +84,7 @@ bool SceneContact::SweepTopy(UWorld* World,const AActor* Plane,const FTransform&
             Rest.AddToTranslation(First.Normal*Skin);
             const UPrimitiveComponent* Surface=First.GetComponent();
             Kind=TEXT("ground");
-            for (FName Name : {FName(TEXT("tree")),FName(TEXT("rock")),FName(TEXT("water"))})
+            for (FName Name : {FName(TEXT("tree")),FName(TEXT("rock")),FName(TEXT("water")),FName(TEXT("bench")),FName(TEXT("mast"))})
                 if (Surface && Surface->ComponentHasTag(Name)) Kind=Name;
             return true;
         }

@@ -32,6 +32,7 @@ public:
     float GetSinkMps() const { return SinkMps; }
     float GetAltitudeM() const { return AltitudeM; }
     float GetPhysicsHz() const { return PhysicsHz; }
+    double GetWeatherSeconds() const { return WeatherSeconds; }
     FVector GetLocalWind() const { return Flight.LocalWind(); }
     double GetRidgeLift() const { return RidgeLift; }
     FVector GetRelativeFlow() const { return Flight.RelativeFlowNED(); }
@@ -69,6 +70,9 @@ public:
     FString GetControlMode() const { return Radio.HasDevice() ? Radio.Status() : TEXT("Clavier"); }
     bool ShowInstruments() const {return bShowInstruments;}
 
+bool TrailsVisible() const { return bShowWindTrails; }
+    int32 TrailDistance=90;
+    void ShowTrails(bool Visible) { bShowWindTrails=Visible; }
 private:
     UPROPERTY()
     USceneComponent* SceneRoot;
@@ -142,7 +146,8 @@ private:
     float LaunchHeading = 0.f;
     float WalkPitch = -3.f;
     void MoveWalking(float DeltaSeconds);
-    bool FindPilotGround(const FVector& Position, FHitResult& Hit) const;
+    bool FindPilotGround(const FVector& Position, FHitResult& Hit,bool IncludeWater=false) const;
+    void KeepNoclipAboveGround();
     FString SiteNotice;
     bool PlacePilotFromNoclip();
     bool bMeadowProof = false;

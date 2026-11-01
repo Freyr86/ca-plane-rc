@@ -13,3 +13,5 @@ Le script `build_fir.py` construit les sapins à branches courbées et les silho
 Les variantes glTF individuelles référencent les tampons binaires de leur collection source. Les atlas RGBA combinent la photographie couleur et le masque d'origine. Le script Scripts/build_alpine_site.py importe ces variantes et construit les matériaux du projet.
 
 Le dépôt public ne contient pas les fichiers ArchVis d’Epic : le lanceur les copie depuis l’installation locale d’Unreal Engine. Les rochers sont chargés directement depuis le plugin PCGBiomeSample installé avec le moteur. Ces ressources restent soumises aux conditions de leur fournisseur.
+
+Les trois jeunes pins des lisières utilisent les variantes A, B et C de [Pine Sapling Small](https://polyhaven.com/a/pine_sapling_small) de Poly Haven (CC0), avec les textures 1K et le masque des aiguilles.

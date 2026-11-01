@@ -1,4 +1,5 @@
 #include "SlopeWorld.h"
+#include "SlopeFlightPawn.h"
 #include "ValleyLandscape.h"
 #include "SceneContact.h"
 #include "GliderDynamics.h"
@@ -89,6 +90,15 @@ ASlopeWorld::ASlopeWorld()
     if (CloudMat.Succeeded()) Clouds->SetMaterial(CloudMat.Object);
 }
 
+namespace
+{
+    // West of the launch crest, the lip follows a broken line across D3 and D4.
+    float CliffOffset(float X,float Y)
+    {
+        return ASlopeWorld::PilotY-Y-1730.f-175.f*FMath::Sin(X*.00047f)-72.f*FMath::Sin(X*.00114f);
+    }
+}
+
 float ASlopeWorld::TerrainHeightCm(float X, float Y)
 {
     const float Range = FVector2D(X-PilotX,Y-PilotY).Size();
@@ -105,7 +115,15 @@ float ASlopeWorld::TerrainHeightCm(float X, float Y)
     const float Basin = FMath::Square((X-26000.f)/14000.f) + FMath::Square((Y-32000.f)/23500.f);
     Height -= 2200.f * FMath::Exp(-Basin);
     // Rounded shoulder at the pilot position, falling towards the lake.
-    Height += 7255.f * FMath::Exp(-FMath::Square((X-PilotX)/10600.f) - FMath::Square((Y-PilotY)/2500.f));
+    // Widen the eastern shoulder, feathering it around the low saddle at the valley origin.
+    const float SaddleDistance=FVector2D(X,Y).Size();
+    const float EastWidth=Y>PilotY ? FMath::Lerp(2500.f,7400.f,FMath::SmoothStep(3500.f,7100.f,SaddleDistance)) : 2500.f;
+    Height += 7255.f * FMath::Exp(-FMath::Square((X-PilotX)/10600.f) - FMath::Square((Y-PilotY)/EastWidth));
+    const float Face=CliffOffset(X,Y);
+    const float Along=FMath::Exp(-FMath::Square((X-PilotX)/10500.f));
+    Height += Along*(1750.f*FMath::SmoothStep(-1150.f,-300.f,Face)
+                     -3500.f*FMath::SmoothStep(-300.f,320.f,Face)
+                     +1750.f*FMath::SmoothStep(320.f,2400.f,Face));
     if (Range <= 8500.f) return Height;
     return FMath::Lerp(Height,Valley::Height(X,Y),FMath::SmoothStep(8500.f,26000.f,Range));
 }
@@ -121,11 +139,45 @@ void ASlopeWorld::OnConstruction(const FTransform& Transform)
     SkyLight->RecaptureSky();
 }
 
+void ASlopeWorld::UpdateSky()
+{
+    const auto Weather=ValleyAir::Settings();
+    if (Weather.SolarMinutes==LastSolarMinutes && Weather.Sky==LastSky) return;
+    LastSolarMinutes=Weather.SolarMinutes;
+    LastSky=Weather.Sky;
+    const FVector ToSun=ValleyAir::SunDirection(LastSolarMinutes);
+    const float Day=FMath::Clamp(float(ToSun.Z),0.f,1.f);
+    const bool Covered=LastSky==2, Mist=LastSky==3;
+    Sun->SetWorldRotation((-ToSun).Rotation());
+    Sun->SetIntensity(78000.f*FMath::Sqrt(Day)*(Covered?.24f:Mist?.48f:1.f));
+    Sun->SetLightColor(FMath::Lerp(FLinearColor(1.f,.44f,.19f),FLinearColor(1.f,.99f,.975f),FMath::SmoothStep(0.f,.44f,Day)));
+    Clouds->SetVisibility(LastSky!=0);
+    if (!WeatherClouds && Clouds->GetMaterial())
+    {
+        WeatherClouds=UMaterialInstanceDynamic::Create(Clouds->GetMaterial(),this);
+        Clouds->SetMaterial(WeatherClouds);
+    }
+    if (WeatherClouds)
+    {
+        if (Covered) WeatherClouds->SetScalarParameterValue(TEXT("Cloud_GlobalCoverage"),1.f);
+        else WeatherClouds->ClearParameterValues();
+    }
+    Clouds->SetLayerBottomAltitude(Covered?1.1f:2.4f);
+    Clouds->SetLayerHeight(Covered?2.8f:1.f);
+    HeightFog->SetFogDensity(Mist?.065f:Covered?.023f:.013f);
+    HeightFog->SetStartDistance(Mist?800.f:28000.f);
+    HeightFog->SetFogInscatteringColor(FMath::Lerp(FLinearColor(.007f,.009f,.018f),FLinearColor(.50f,.64f,.78f),FMath::SmoothStep(-.08f,.22f,float(ToSun.Z))));
+    SkyLight->SetIntensity(.05f+.95f*FMath::SmoothStep(-.08f,.25f,float(ToSun.Z)));
+    SkyLight->RecaptureSky();
+}
+
 void ASlopeWorld::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    UpdateSky();
     APlayerController* PC = GetWorld()->GetFirstPlayerController();
     const APawn* Plane = PC ? PC->GetPawn() : nullptr;
+    if (const auto* Pilot=Cast<ASlopeFlightPawn>(Plane)) UpdateWindsock(DeltaSeconds,Pilot->GetWeatherSeconds());
     if (GrassMaterial && Plane)
     {
         GrassMaterial->SetVectorParameterValue(TEXT("AircraftCentre"), FLinearColor(Plane->GetActorLocation()));
@@ -216,7 +268,11 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
             Vertices.Add(FVector(X, Y, H));
             Normals.Add(Normal);
             UVs.Add(FVector2D(X, Y) / 4000.0f);
-            const float Rock = FMath::SmoothStep(.12f,.42f,1.f-float(Normal.Z)) * FMath::SmoothStep(9000.f,22000.f,H);
+            const float AlpineRock = FMath::SmoothStep(.12f,.42f,1.f-float(Normal.Z)) * FMath::SmoothStep(9000.f,22000.f,H);
+            const float FaceRock=(1.f-FMath::SmoothStep(300.f,780.f,FMath::Abs(CliffOffset(X,Y))))
+                *(1.f-FMath::SmoothStep(9000.f,17000.f,FMath::Abs(X-PilotX)))
+                *FMath::SmoothStep(.24f,.55f,1.f-float(Normal.Z));
+            const float Rock=FMath::Max(AlpineRock,FaceRock);
             const float Alpine = FMath::SmoothStep(17300.f,31600.f,H);
             const float Shore = (1.f-FMath::SmoothStep(20.f,520.f,H-Valley::WaterLevel))*(1.f-FMath::SmoothStep(1000.f,3500.f,Valley::ShoreDistance(X,Y)));
             const float Wood = FMath::SmoothStep(.43f,.68f,Valley::Woodland(X,Y))*(1.f-Alpine);
@@ -277,8 +333,11 @@ void ASlopeWorld::AddScenery()
     Alders->SetVisibleInRayTracing(false);
     // Open glades alternate with overlapping stands. Outer crowns retain their
     // silhouette without incurring the cost of thousands of masked needle meshes.
-    UHierarchicalInstancedStaticMeshComponent* TreeGroups[] = {Oaks,Spruces,Canopies,Alders};
-    TArray<FTransform> Timber[4];
+    UHierarchicalInstancedStaticMeshComponent* TreeGroups[] = {Oaks,Spruces,Canopies,Alders,
+        Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_a")),
+        Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_b")),
+        Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_c"))};
+    TArray<FTransform> Timber[UE_ARRAY_COUNT(TreeGroups)];
     for (int32 Stand=0; Stand<4700; ++Stand)
     {
         const float Range = Stand<1550 ? 104000.f : 268000.f;
@@ -296,21 +355,24 @@ void ASlopeWorld::AddScenery()
             if (Dist<6200 || FVector2D(X,Y).Size()<5600) continue;
             const float Z=TerrainHeightCm(X,Y);
             if (Z<Valley::WaterLevel+65.f || Z>27800.f || Random.FRand()<FMath::SmoothStep(15000.f,27800.f,Z)) continue;
-            const bool Full = Dist<39000.f || (Dist<71000.f && I%5==0);
+            const bool LakeStand=X>=-135000 && X<=65000 && Y>=-75000 && Y<=125000;
+            const bool Full = LakeStand || Dist<39000.f || (Dist<71000.f && I%5==0);
             const bool Oak = Full && Z<3500.f && Random.FRand()<.41f;
             const bool Riparian = Z<6200.f && Random.FRand() < .48f;
-            const int32 Kind=Full ? (Oak ? 0 : 1) : (Riparian ? 3 : 2);
+            // Smaller pines break up stand margins and leave the mature canopy above them.
+            const bool YoungPine=LakeStand && R>.70f*Radius && I%6==0;
+            const int32 Kind=YoungPine ? 4+(Stand+I)%3 : Full ? (Oak ? 0 : 1) : (Riparian ? 3 : 2);
             auto* Batch=TreeGroups[Kind];
             if (!Batch->GetStaticMesh()) continue;
             const FBox Bounds=Batch->GetStaticMesh()->GetBoundingBox();
-            const float Height=Random.FRandRange(800,1850);
+            const float Height=YoungPine ? Random.FRandRange(165,430) : Random.FRandRange(800,1850);
             const float Scale=Height/FMath::Max(1.,Bounds.GetSize().Z);
             const float WidthScale=Scale*Random.FRandRange(.90f,1.45f);
             Timber[Kind].Emplace(FRotator(0,Random.FRandRange(0,360),0),FVector(X,Y,Z-Bounds.Min.Z*Scale-(Full ? 12 : 45)),
                                  FVector(WidthScale,WidthScale,Scale));
         }
     }
-    for (int32 Kind=0;Kind<4;++Kind) TreeGroups[Kind]->AddInstances(Timber[Kind],false,false,false);
+    for (int32 Kind=0;Kind<UE_ARRAY_COUNT(TreeGroups);++Kind) TreeGroups[Kind]->AddInstances(Timber[Kind],false,false,false);
     UE_LOG(LogTemp,Display,TEXT("SimPlaneur: valley woodland %d oaks, %d silver firs, %d distant trees"),Timber[0].Num(),Timber[1].Num(),Timber[2].Num()+Timber[3].Num());
     for (int32 I=0;I<540;++I)
     {
@@ -344,6 +406,13 @@ void ASlopeWorld::AddScenery()
             const float Radius=.35f*FMath::Max(Size.X*Scale.X,Size.Y*Scale.Y);
             const float Height=Size.Z*Scale.Z;
             const FVector Centre=Tree.TransformPosition(FVector(0,0,Bounds.GetCenter().Z));
+            if (Centre.X>=-138000 && Centre.X<=68000 && Centre.Y>=-78000 && Centre.Y<=128000)
+            {
+                const float R=.25f*(Size.X*Scale.X+Size.Y*Scale.Y);
+                for (int32 A=FMath::FloorToInt((Centre.X-R)/1000); A<=FMath::FloorToInt((Centre.X+R)/1000); ++A)
+                    for (int32 B=FMath::FloorToInt((Centre.Y-R)/1000); B<=FMath::FloorToInt((Centre.Y+R)/1000); ++B)
+                        Crowns.FindOrAdd(FIntPoint(A,B)).Emplace(Centre.X,Centre.Y,R);
+            }
             Cylinders.Emplace(FQuat::Identity,Centre,FVector(Radius/50.f,Radius/50.f,Height/100.f));
         }
     }
@@ -375,12 +444,13 @@ void ASlopeWorld::AddScenery()
     GrassMaterial = LeafMaterial ? UMaterialInstanceDynamic::Create(LeafMaterial,this) : nullptr;
     for (auto* Patch : {Blades,Fescue,LowGrass})
     {
-        Patch->SetCullDistances(3300,4600);
+        Patch->SetCullDistances(3800,5000);
         Patch->SetEvaluateWorldPositionOffset(true);
         if (GrassMaterial) Patch->SetMaterial(0,GrassMaterial);
     }
-    LowGrass->SetCullDistances(1600,2200);
+    LowGrass->SetCullDistances(2200,3400);
     LowGrass->SetCastShadow(false);
+    PilotGrass = {Blades,Fescue,LowGrass};
     TArray<FTransform> Leaves, SeedHeads, Understory;
     // Jittered crowns prevent bare random gaps at the pilot's feet. The cover thins
     // gradually down the slope, where sub-pixel leaves give way to the ground material.
@@ -397,12 +467,15 @@ void ASlopeWorld::AddScenery()
             const float Z=TerrainHeightCm(X,Y);
             const FVector Normal = FVector(TerrainHeightCm(X-5,Y)-TerrainHeightCm(X+5,Y),
                                            TerrainHeightCm(X,Y-5)-TerrainHeightCm(X,Y+5),10).GetSafeNormal();
+            if (Normal.Z<.60f || Z<Valley::WaterLevel+60) continue;
+            const float Shade=CrownCover(X,Y);
+            if (Shade>.01f && Random.FRand()<Shade*.85f) continue;
             const float Yaw = Random.FRandRange(-PI,PI);
             const FQuat Rotation=FRotationMatrix::MakeFromZX(Normal,FVector(FMath::Cos(Yaw),FMath::Sin(Yaw),0)).ToQuat();
             const float Pocket=FMath::PerlinNoise2D(Offset/220.f);
             const float Width=Random.FRandRange(.78f,1.2f);
             const float Height=Random.FRandRange(.68f,1.1f)+.32f*Pocket;
-            auto& Instances = Random.FRand()<.2f+.17f*Pocket ? SeedHeads : Leaves;
+            auto& Instances = Shade>.5f ? Understory : Random.FRand()<.2f+.17f*Pocket ? SeedHeads : Leaves;
             Instances.Emplace(Rotation,FVector(X,Y,Z-1.f),FVector(Width,Width,Height));
             if (Distance < 2000 && Random.FRand() < .83f)
             {

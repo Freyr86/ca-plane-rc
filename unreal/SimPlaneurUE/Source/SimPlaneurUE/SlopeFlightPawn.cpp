@@ -191,6 +191,10 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 void ASlopeFlightPawn::BeginPlay()
 {
     Super::BeginPlay();
+    ValleyAir::LoadSettings();
+    GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
+    GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("TrailDistance"),TrailDistance,GGameUserSettingsIni);
+    TrailDistance=FMath::Clamp(TrailDistance,20,500);
     PilotSite=FVector(ASlopeWorld::PilotX,ASlopeWorld::PilotY,
         ASlopeWorld::TerrainHeightCm(ASlopeWorld::PilotX,ASlopeWorld::PilotY));
     bSmokeMode = FParse::Param(FCommandLine::Get(), TEXT("SimSmoke"));
@@ -406,7 +410,12 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         if (Radio.Pressed(A::HandLaunch)) BeginHandLaunch();
     }
     if (Radio.Pressed(A::Instruments)) bShowInstruments=!bShowInstruments;
-    if (Radio.Pressed(A::WindTrails)) bShowWindTrails = !bShowWindTrails;
+    if (Radio.Pressed(A::WindTrails))
+    {
+        bShowWindTrails = !bShowWindTrails;
+        GConfig->SetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
+        GConfig->Flush(false,GGameUserSettingsIni);
+    }
     if (Radio.Pressed(A::Camera) && !bHeldForLaunch)
     {
         CycleCamera();
@@ -424,6 +433,7 @@ void ASlopeFlightPawn::ToggleNoclip()
         FMinimalViewInfo View;
         CalcCamera(0.f,View);
         NoclipPosition=View.Location;
+        KeepNoclipAboveGround();
         NoclipRotation=View.Rotation;
         NoclipRotation.Roll=0.f;
         SiteNotice.Reset();
@@ -444,7 +454,7 @@ FVector ASlopeFlightPawn::PilotPosition() const
         -ASlopeWorld::TerrainHeightCm(PilotSite.X,PilotSite.Y));
 }
 
-bool ASlopeFlightPawn::FindPilotGround(const FVector& Position, FHitResult& Hit) const
+bool ASlopeFlightPawn::FindPilotGround(const FVector& Position, FHitResult& Hit,bool IncludeWater) const
 {
     const FVector Above(Position.X,Position.Y,1000000.);
     const FVector Below(Position.X,Position.Y,-1000000.);
@@ -455,7 +465,7 @@ bool ASlopeFlightPawn::FindPilotGround(const FVector& Position, FHitResult& Hit)
         if (!GetWorld()->LineTraceSingleByChannel(Hit,Above,Below,SceneContact::Channel,Query)) break;
         const UPrimitiveComponent* Surface=Hit.GetComponent();
         if (!Surface) break;
-        if (Surface->ComponentHasTag(TEXT("water"))) return false;
+        if (Surface->ComponentHasTag(TEXT("water"))) return IncludeWater;
         if (Surface->ComponentHasTag(TEXT("ground")) || Surface->ComponentHasTag(TEXT("rock"))) return true;
         Query.AddIgnoredComponent(Surface);
     }
@@ -518,6 +528,13 @@ void ASlopeFlightPawn::ExploreScene()
     if (!bMenuOpen && !bNoclip) ToggleNoclip();
 }
 
+void ASlopeFlightPawn::KeepNoclipAboveGround()
+{
+    FHitResult Hit;
+    if (FindPilotGround(NoclipPosition,Hit,true))
+        NoclipPosition.Z=FMath::Max(NoclipPosition.Z,Hit.ImpactPoint.Z+85.);
+}
+
 void ASlopeFlightPawn::MoveNoclip(float DeltaSeconds)
 {
     auto* PC=CastChecked<APlayerController>(GetController());
@@ -534,7 +551,15 @@ void ASlopeFlightPawn::MoveNoclip(float DeltaSeconds)
     const float Up=float(Down(EKeys::SpaceBar))-float(Down(EKeys::LeftControl)||Down(EKeys::RightControl));
     const FVector Direction=NoclipRotation.Vector()*Forward+FRotationMatrix(NoclipRotation).GetUnitAxis(EAxis::Y)*Right+FVector::UpVector*Up;
     const float Boost=(Down(EKeys::LeftShift)||Down(EKeys::RightShift))?10.f:1.f;
-    NoclipPosition+=Direction.GetClampedToMaxSize(1.)*(NoclipSpeed*100.f*Boost*FMath::Clamp(DeltaSeconds,0.f,.1f));
+    const FVector Travel=Direction.GetClampedToMaxSize(1.)*(NoclipSpeed*100.f*Boost*FMath::Clamp(DeltaSeconds,0.f,.1f));
+    if (Travel.IsNearlyZero()) return;
+    // Follow narrow ridges even when boost carries the camera across several terrain cells.
+    const int32 Steps=FMath::Max(1,FMath::CeilToInt(Travel.Size2D()/250.));
+    for (int32 I=0; I<Steps; ++I)
+    {
+        NoclipPosition+=Travel/Steps;
+        KeepNoclipAboveGround();
+    }
 }
 
 void ASlopeFlightPawn::OpenMenu()
@@ -611,7 +636,7 @@ void ASlopeFlightPawn::ResetFlight()
         bInspectMeadow = false;
         Flight.StopAt(HandPose());
     }
-    WeatherSeconds = 0.;
+    // Relaunching the aircraft must not restart the life cycle of the air mass.
     RidgeLift = ValleyAir::SampleGlider(Flight, WeatherSeconds);
     WindTrails.Clear(*AirLines);
     ++FlightId;
@@ -727,7 +752,12 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
     else if (!bContactProof) ReadControls(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
     if (bModelReady && !bMenuOpen && !bNoclip && bShowWindTrails)
-        WindTrails.Update(*AirLines, Flight.PositionNED(), -Flight.RelativeFlowNED().GetSafeNormal(), WeatherSeconds);
+    {
+        FVector Eye; FRotator View;
+        GetWorld()->GetFirstPlayerController()->GetPlayerViewPoint(Eye,View);
+        Eye*=.01;
+        WindTrails.Update(*AirLines, Flight.PositionNED(), -Flight.RelativeFlowNED().GetSafeNormal(), WeatherSeconds,FVector(Eye.X,Eye.Y,-Eye.Z),TrailDistance);
+    }
     else
         WindTrails.Clear(*AirLines);
     if (bHangarModel) PositionHangarModel();
@@ -793,6 +823,8 @@ FString ASlopeFlightPawn::GetContactLabel() const
 {
     if (ContactKind.IsNone()) return {};
     if (ContactKind==TEXT("tree")) return TEXT("Arbre touché");
+    if (ContactKind==TEXT("bench")) return TEXT("Contact banc");
+    if (ContactKind==TEXT("mast")) return TEXT("Contact mât");
     if (ContactKind==TEXT("rock")) return TEXT("Contact rocher");
     if (ContactKind==TEXT("water")) return TEXT("Contact eau");
     return TEXT("Au sol");

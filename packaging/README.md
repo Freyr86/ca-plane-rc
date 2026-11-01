@@ -18,4 +18,4 @@ L’installation se fait par utilisateur, dans `%LOCALAPPDATA%\Programs\CaPlaneR
 
 ## Vérification avant publication
 
-Installer dans un dossier de test, puis exécuter le jeu installé avec `-SimSmoke -MenuProof -RenderOffscreen -unattended -NoSplash` et un fichier `-GameUserSettingsINI=` isolé. Vérifier la dernière ligne `MENU_PROOF step=59 pass=1` et inspecter les captures. Tester ensuite la désinstallation du dossier de test.
+Installer dans un dossier de test, puis exécuter le jeu installé avec `-SimSmoke -MenuProof -RenderOffscreen -unattended -NoSplash` et un fichier `-GameUserSettingsINI=` isolé. Vérifier la dernière ligne `MENU_PROOF step=63 pass=1` et inspecter les captures, notamment `club-meteo.png`. Tester ensuite la désinstallation du dossier de test.

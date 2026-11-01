@@ -9,6 +9,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FValleyAirTest, "SimPlaneur.Physics.ValleyWind"
 
 bool FValleyAirTest::RunTest(const FString&)
 {
+    struct FRestoreWeather
+    {
+        ValleyAir::FWeatherSettings Previous=ValleyAir::Settings();
+        ~FRestoreWeather() { ValleyAir::SetSettings(Previous); }
+    } RestoreWeather;
+    ValleyAir::SetSettings(ValleyAir::FWeatherSettings{});
     TestEqual(TEXT("A southbound flow comes from north"), ValleyAir::FromBearing(FVector(-2,0,0)), 0.);
     TestEqual(TEXT("A westbound flow comes from east"), ValleyAir::FromBearing(FVector(0,-2,0)), 90.);
     TestTrue(TEXT("Facing east puts north to the left"), ValleyAir::CompassDirection(0,90).Equals({-1,0}, 1.e-6));
