@@ -105,10 +105,14 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 && Loading().CgMm == StandardLoading().CgMm && UsesAileronSteering()!=MenuProofKSteering;
             break;
         case 5: OK=Click(TEXT("Devices")); break;
-        case 6: Shot(TEXT("club-radio.png")); OK=Click(TEXT("Refresh")); break;
+        case 6:
+            Shot(TEXT("club-radio.png"));
+            // Let Slate refresh bound enabled attributes before learning a key,
+            // including on fresh installations without a connected transmitter.
+            OK=Click(TEXT("Refresh")) && Click(TEXT("PÉRIPHÉRIQUE+")); break;
         case 7:
         {
-            OK=Click(TEXT("PÉRIPHÉRIQUE+")) && Radio.EditingKeyboard();
+            OK=Radio.EditingKeyboard();
             const FName Original=Radio.Binding(EGliderControl::Rudder).Plus;
             for (const FName Key : {FName(TEXT("P")), Original})
             {
