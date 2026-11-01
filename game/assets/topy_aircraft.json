@@ -1,0 +1,144 @@
+{
+  "name": "Graupner Topy 4522 V0",
+  "status": "provisional_unvalidated_geometry",
+  "span_m": 1.19,
+  "length_m": 0.86,
+  "wing_area_m2_published": 0.2078,
+  "root_chord_m_published": 0.186,
+  "tip_chord_m_published": 0.135,
+  "mass_kg": 0.32,
+  "geometry_profile": "S4083 coordinates; fixed trailing-edge modification not represented",
+  "assumptions": "Planform stations, polyhedral heights, fuselage shape and V-tail angle are provisional",
+  "rhino_axes": "X right, Y forward, Z up",
+  "godot_axes": "X right, Y up, Z aft",
+  "parts": [
+    {
+      "name": "wing_left",
+      "color": [
+        242,
+        239,
+        220,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "wing_right",
+      "color": [
+        242,
+        239,
+        220,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "vtail_fixed_left",
+      "color": [
+        242,
+        239,
+        220,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "vtail_left",
+      "color": [
+        196,
+        45,
+        43,
+        255
+      ],
+      "pivot": [
+        -0.009829824531467902,
+        0.016882917236212554,
+        0.39747421052631576
+      ],
+      "axis": [
+        -0.14580906388344053,
+        0.1020966056704862,
+        0.012225789473684245
+      ]
+    },
+    {
+      "name": "vtail_fixed_right",
+      "color": [
+        242,
+        239,
+        220,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "vtail_right",
+      "color": [
+        196,
+        45,
+        43,
+        255
+      ],
+      "pivot": [
+        0.009829824531467902,
+        0.016882917236212554,
+        0.39747421052631576
+      ],
+      "axis": [
+        0.14580906388344053,
+        0.1020966056704862,
+        0.012225789473684245
+      ]
+    },
+    {
+      "name": "fuselage",
+      "color": [
+        242,
+        239,
+        220,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "canopy",
+      "color": [
+        25,
+        31,
+        38,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+<?xml version="1.0"?>
+<fdm_config name="Graupner Topy 4522 V0 - PROVISIONAL" version="2.0">
+ <fileheader>
+  <author>Simulateur RC</author>
+  <description>Provisional Topy model using UIUC S4083(A) low-Re wind-tunnel drag data. CG, inertias and stability/control derivatives are assumptions, not measurements.</description>
+ </fileheader>
+ <metrics>
+  <wingarea unit="M2">0.2078</wingarea>
+  <wingspan unit="M">1.19</wingspan>
+  <chord unit="M">0.17462185</chord>
+  <location name="AERORP" unit="M"><x>0</x><y>0</y><z>0</z></location>
+  <location name="EYEPOINT" unit="M"><x>0</x><y>0</y><z>0</z></location>
+  <location name="VRP" unit="M"><x>0</x><y>0</y><z>0</z></location>
+ </metrics>
+ <mass_balance>
+  <ixx unit="KG*M2">0.014875</ixx><iyy unit="KG*M2">0.0102</iyy><izz unit="KG*M2">0.024225</izz>
+  <ixy unit="KG*M2">0</ixy><ixz unit="KG*M2">0</ixz><iyz unit="KG*M2">0</iyz>
+  <emptywt unit="KG">0.320</emptywt>
+  <location name="CG" unit="M"><x>0</x><y>0</y><z>0</z></location>
+ </mass_balance>
+ <ground_reactions/>
+
+ <flight_control name="Topy provisional V-tail">
+  <channel name="V-tail mixing and servo rate">
+   <summer name="fcs/vtail-left-command-norm">
+    <input>fcs/elevator-cmd-norm</input><input>fcs/rudder-cmd-norm</input>
+    <clipto><min>-1</min><max>1</max></clipto>
+   </summer>
+   <summer name="fcs/vtail-right-command-norm">
+    <input>fcs/elevator-cmd-norm</input><input>-fcs/rudder-cmd-norm</input>
+    <clipto><min>-1</min><max>1</max></clipto>
+   </summer>
+   <actuator name="fcs/vtail-left-actuator">
+    <input>fcs/vtail-left-command-norm</input><rate_limit>3.0</rate_limit>
+    <clipto><min>-1</min><max>1</max></clipto><output>fcs/vtail-left-pos-norm</output>
+   </actuator>
+   <actuator name="fcs/vtail-right-actuator">
+    <input>fcs/vtail-right-command-norm</input><rate_limit>3.0</rate_limit>
+    <clipto><min>-1</min><max>1</max></clipto><output>fcs/vtail-right-pos-norm</output>
+   </actuator>
+   <summer name="fcs/vtail-pitch-sum"><input>fcs/vtail-left-pos-norm</input><input>fcs/vtail-right-pos-norm</input></summer>
+   <pure_gain name="fcs/vtail-pitch-pos-norm"><input>fcs/vtail-pitch-sum</input><gain>0.5</gain></pure_gain>
+   <summer name="fcs/vtail-yaw-difference"><input>fcs/vtail-left-pos-norm</input><input>-fcs/vtail-right-pos-norm</input></summer>
+   <pure_gain name="fcs/vtail-yaw-pos-norm"><input>fcs/vtail-yaw-difference</input><gain>0.5</gain></pure_gain>
+  </channel>
+ </flight_control>
+ <aerodynamics>
+  <axis name="LIFT"><function name="aero/lift"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><table><independentVar lookup="row">aero/alpha-rad</independentVar><tableData>-0.5235988 -0.2000000
+-0.3490659 -0.4000000
+-0.2094395 -0.5200000
+-0.1396263 -0.4600000
+-0.0872665 -0.2200000
+-0.0429351 0.0000000
+-0.0325504 0.0500000
+-0.0221657 0.1000000
+-0.0117635 0.1500000
+-0.0014661 0.2000000
+0.0089884 0.2500000
+0.0194604 0.3000000
+0.0299673 0.3500000
+0.0403869 0.4000000
+0.0506495 0.4500000
+0.0607549 0.5000000
+0.0707556 0.5500000
+0.0819258 0.6000000
+0.0949634 0.6500000
+0.1081581 0.7000000
+0.1215796 0.7500000
+0.1352456 0.8000000
+0.1490337 0.8500000
+0.1625600 0.9000000
+0.1758768 0.9500000
+0.1891239 1.0000000
+0.2028247 1.0500000
+0.2165081 1.1000000
+0.2314132 1.1500000
+0.2617994 1.1200000
+0.2879793 0.9600000
+0.3490659 0.6800000
+0.5235988 0.3200000</tableData></table></product></function></axis><axis name="DRAG"><function name="aero/drag"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><sum><table><independentVar lookup="row">aero/alpha-rad</independentVar><independentVar lookup="column">velocities/vt-fps</independentVar><tableData>9.842520 13.123360 16.404199 19.685039 22.965879 26.246719 32.808399 39.370079 49.212598
+-0.5235988 0.3956405 0.3956405 0.3956405 0.3993597 0.4031318 0.4063993 0.4081626 0.4081891 0.4082215
+-0.3490659 0.1963142 0.1963142 0.1963142 0.2000334 0.2038055 0.2070730 0.2088363 0.2088628 0.2088952
+-0.2094395 0.0861973 0.0861973 0.0861973 0.0899164 0.0936885 0.0969561 0.0987193 0.0987458 0.0987782
+-0.1396263 0.0526782 0.0526782 0.0526782 0.0563974 0.0601695 0.0634370 0.0652003 0.0652267 0.0652592
+-0.0872665 0.0425143 0.0425143 0.0425143 0.0462335 0.0500056 0.0532731 0.0550364 0.0550628 0.0550952
+-0.0429351 0.0335598 0.0335598 0.0335598 0.0327220 0.0318723 0.0311363 0.0301104 0.0293503 0.0284200
+-0.0325504 0.0306667 0.0306667 0.0306667 0.0300931 0.0295113 0.0290073 0.0281886 0.0275287 0.0267210
+-0.0221657 0.0284097 0.0284097 0.0284097 0.0282010 0.0279892 0.0278059 0.0271195 0.0264133 0.0255491
+-0.0117635 0.0264640 0.0264640 0.0264640 0.0269711 0.0274853 0.0279308 0.0273671 0.0264061 0.0252299
+-0.0014661 0.0275045 0.0275045 0.0275045 0.0279315 0.0283645 0.0287397 0.0279260 0.0267102 0.0252222
+0.0089884 0.0298966 0.0298966 0.0298966 0.0299340 0.0299720 0.0300048 0.0287964 0.0273257 0.0255258
+0.0194604 0.0326000 0.0326000 0.0326000 0.0322479 0.0318908 0.0315814 0.0299782 0.0282527 0.0261408
+0.0299673 0.0356149 0.0356149 0.0356149 0.0348732 0.0341210 0.0334694 0.0315978 0.0297692 0.0275312
+0.0403869 0.0390731 0.0390731 0.0390731 0.0379026 0.0367155 0.0356871 0.0337352 0.0320511 0.0299900
+0.0506495 0.0430579 0.0430579 0.0430579 0.0413946 0.0397076 0.0382462 0.0361841 0.0346445 0.0327602
+0.0607549 0.0473542 0.0473542 0.0473542 0.0451980 0.0430111 0.0411168 0.0389443 0.0375492 0.0358417
+0.0707556 0.0519619 0.0519619 0.0519619 0.0493128 0.0466261 0.0442987 0.0420907 0.0409297 0.0395088
+0.0819258 0.0569204 0.0569204 0.0569204 0.0540259 0.0510902 0.0485471 0.0462394 0.0450966 0.0436979
+0.0949634 0.0624795 0.0624795 0.0624795 0.0592700 0.0560149 0.0531951 0.0507428 0.0496034 0.0482090
+0.1081581 0.0683500 0.0683500 0.0683500 0.0648255 0.0612509 0.0581545 0.0555513 0.0544079 0.0530085
+0.1215796 0.0744443 0.0744443 0.0744443 0.0707068 0.0669160 0.0636324 0.0608663 0.0596472 0.0581552
+0.1352456 0.0807553 0.0807553 0.0807553 0.0768344 0.0728577 0.0694129 0.0664967 0.0652005 0.0636142
+0.1490337 0.0873777 0.0873777 0.0873777 0.0832745 0.0791129 0.0755080 0.0724441 0.0710730 0.0693950
+0.1625600 0.0944677 0.0944677 0.0944677 0.0901458 0.0857624 0.0819653 0.0787315 0.0772796 0.0755026
+0.1758768 0.1018826 0.1018826 0.1018826 0.0973380 0.0927287 0.0887359 0.0853304 0.0837976 0.0819216
+0.1891239 0.1093836 0.1093836 0.1093836 0.1046749 0.0998992 0.0957623 0.0922342 0.0906464 0.0887031
+0.2028247 0.1165545 0.1165545 0.1165545 0.1118660 0.1071108 0.1029916 0.0994463 0.0978265 0.0958440
+0.2165081 0.1240369 0.1240369 0.1240369 0.1193686 0.1146339 0.1105324 0.1069698 0.1053180 0.1032963
+0.2314132 0.1295794 0.1295794 0.1295794 0.1256056 0.1215753 0.1180841 0.1148495 0.1132011 0.1111835
+0.2617994 0.1307418 0.1307418 0.1307418 0.1261932 0.1215799 0.1175837 0.1140694 0.1124084 0.1103754
+0.2879793 0.1199556 0.1199556 0.1199556 0.1153664 0.1107119 0.1066800 0.1032402 0.1016912 0.0997954
+0.3490659 0.1302620 0.1302620 0.1302620 0.1268635 0.1234167 0.1204309 0.1178895 0.1167494 0.1153541
+0.5235988 0.3278354 0.3278354 0.3278354 0.3273274 0.3268123 0.3263660 0.3246048 0.3227774 0.3205408</tableData></table><product><value>0.012</value><property>fcs/vtail-pitch-pos-norm</property><property>fcs/vtail-pitch-pos-norm</property></product><product><value>0.01</value><property>fcs/vtail-yaw-pos-norm</property><property>fcs/vtail-yaw-pos-norm</property></product></sum></product></function></axis><axis name="SIDE"><function name="aero/side"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><sum><product><value>-0.34</value><property>aero/beta-rad</property></product><product><value>0.04</value><property>fcs/vtail-yaw-pos-norm</property></product></sum></product></function></axis><axis name="ROLL"><function name="aero/roll"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property><sum><product><value>-0.085</value><property>aero/beta-rad</property></product><product><value>-0.8</value><property>aero/bi2vel</property><property>velocities/p-aero-rad_sec</property></product><product><value>-0.03</value><property>fcs/vtail-yaw-pos-norm</property></product></sum></product></function></axis><axis name="PITCH"><function name="aero/pitch"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/cbarw-ft</property><sum><value>0.0458148929</value><product><value>-0.75</value><property>aero/alpha-rad</property></product><product><value>-7</value><property>aero/ci2vel</property><property>velocities/q-aero-rad_sec</property></product><product><value>-0.09</value><property>fcs/vtail-pitch-pos-norm</property></product></sum></product></function></axis><axis name="YAW"><function name="aero/yaw"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property><sum><product><value>0.18</value><property>aero/beta-rad</property></product><product><value>-0.6</value><property>aero/bi2vel</property><property>velocities/r-aero-rad_sec</property></product><product><value>-0.04</value><property>fcs/vtail-yaw-pos-norm</property></product></sum></product></function></axis>
+ </aerodynamics>
+</fdm_config>

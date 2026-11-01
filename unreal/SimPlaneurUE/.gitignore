@@ -1,0 +1,13 @@
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+Content/Aircraft/
+SourceAssets/Topy/*.fbm/
+SourceAssets/K3600/*.fbm/
+SourceAssets/Alize/
+# Copied locally from the installed Unreal ArchVis template by the launcher.
+Content/ArchVis/
+Content/Developers/
+Content/Collections/

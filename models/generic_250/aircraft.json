@@ -1,0 +1,247 @@
+{
+  "name": "Generic 250",
+  "status": "synthetic_unvalidated",
+  "span_m": 2.5,
+  "length_m": 1.51,
+  "wing_area_m2": 0.5,
+  "root_chord_m": 0.25,
+  "tip_chord_m": 0.15,
+  "dihedral_deg": 3,
+  "mass_kg_assumed": 1.5,
+  "geometry_profile": "NACA 2412 approximation; no aerodynamic polar computed",
+  "physics": "Existing rc_demo synthetic coefficients, NOT derived from this geometry",
+  "rhino_axes": "X right, Y forward, Z up",
+  "godot_axes": "X right, Y up, Z aft",
+  "parts": [
+    {
+      "name": "wing_inner_left",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "wing_outer_left",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "aileron_left",
+      "color": [
+        242,
+        104,
+        36,
+        255
+      ],
+      "pivot": [
+        -0.432,
+        0.03281980233224173,
+        0.1137792
+      ],
+      "axis": [
+        -0.8160000000000001,
+        0.03968023708453243,
+        -0.011750400000000008
+      ]
+    },
+    {
+      "name": "stabilizer_left",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "elevator_left",
+      "color": [
+        242,
+        104,
+        36,
+        255
+      ],
+      "pivot": [
+        -0.025,
+        0.0389199591657583,
+        0.8048958333333333
+      ],
+      "axis": [
+        -0.27499999999999997,
+        -0.0012319871663811835,
+        -0.00939583333333327
+      ]
+    },
+    {
+      "name": "wing_inner_right",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "wing_outer_right",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "aileron_right",
+      "color": [
+        242,
+        104,
+        36,
+        255
+      ],
+      "pivot": [
+        0.432,
+        0.03281980233224173,
+        0.1137792
+      ],
+      "axis": [
+        0.8160000000000001,
+        0.03968023708453243,
+        -0.011750400000000008
+      ]
+    },
+    {
+      "name": "stabilizer_right",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "elevator_right",
+      "color": [
+        242,
+        104,
+        36,
+        255
+      ],
+      "pivot": [
+        0.025,
+        0.0389199591657583,
+        0.8048958333333333
+      ],
+      "axis": [
+        0.27499999999999997,
+        -0.0012319871663811835,
+        -0.00939583333333327
+      ]
+    },
+    {
+      "name": "fin",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "rudder",
+      "color": [
+        242,
+        104,
+        36,
+        255
+      ],
+      "pivot": [
+        0.005995529285918733,
+        0.035,
+        0.804
+      ],
+      "axis": [
+        -0.0024527165260576633,
+        0.27,
+        0.006999999999999895
+      ]
+    },
+    {
+      "name": "fuselage",
+      "color": [
+        235,
+        241,
+        242,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    },
+    {
+      "name": "canopy",
+      "color": [
+        30,
+        42,
+        53,
+        255
+      ],
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "axis": null
+    }
+  ]
+}

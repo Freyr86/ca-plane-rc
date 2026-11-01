@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "manufacturer": "Graupner",
+    "model": "Topy",
+    "catalog_reference": "4522",
+    "control_axes": 2,
+    "tail_type": "v_tail",
+    "propulsion": "none"
+  },
+  "published_geometry_si": {
+    "wingspan_m": 1.19,
+    "length_m": 0.86,
+    "wing_area_m2": 0.2078,
+    "wing_root_chord_m": 0.186,
+    "wing_tip_chord_m": 0.135,
+    "v_tail_span_m": 0.38
+  },
+  "published_mass_si": {
+    "manufacturer_flight_mass_kg": 0.36,
+    "fmt_test_flight_mass_kg": 0.32
+  },
+  "published_aerodynamics": {
+    "root_airfoil_ocr": "SD 7934 mod.",
+    "root_airfoil_status": "unconfirmed_ocr",
+    "root_airfoil_working_hypothesis": "S4083 modified",
+    "root_airfoil_hypothesis_confidence": "medium",
+    "candidate_airfoil_coordinates": "airfoils/s4083-uiuc.dat",
+    "tip_airfoil": null,
+    "tail_section": "flat_plate",
+    "fixed_trailing_edge_droop_m_approx": 0.0015
+  },
+  "derived": {
+    "aspect_ratio": 6.8147,
+    "reference_mean_chord_m": 0.17462,
+    "reynolds_at_5_mps_approx": 58200,
+    "reynolds_at_7_mps_approx": 81500,
+    "reynolds_at_12_mps_approx": 139700
+  },
+  "required_real_measurements": {
+    "flight_mass_kg": null,
+    "center_of_gravity_from_root_le_m": null,
+    "inertia_tensor_kg_m2": null,
+    "v_tail_included_angle_rad": null,
+    "wing_segments": null,
+    "tail_geometry": null,
+    "control_throws_rad": null,
+    "incidence_and_twist_rad": null
+  },
+  "sources": [
+    {
+      "title": "Topy von Graupner, FMT 3/2000",
+      "url": "https://rcbookcase.com/data/media/47/03FMT_March_2000.pdf",
+      "role": "primary_review"
+    },
+    {
+      "title": "FMT-Heftarchiv 2000",
+      "url": "https://www.vth.de/fmt/heftarchiv/jahrgaenge-bis-2013/2000",
+      "role": "official_issue_index"
+    },
+    {
+      "title": "S4083 (8%) for R/C Soaring",
+      "url": "https://m-selig.ae.illinois.edu/ads/ref/s4083_ref.html",
+      "role": "candidate_airfoil_reference"
+    }
+  ]
+}

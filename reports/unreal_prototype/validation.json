@@ -1,0 +1,41 @@
+{
+  "status": "ready_to_compile",
+  "engine_path": "C:\\Program Files\\Epic Games\\UE_5.8",
+  "engine_association": "5.8",
+  "source_file_count": 9,
+  "obj_extents_cm_xyz": [
+    86.0,
+    119.0,
+    16.8412935
+  ],
+  "udp_roundtrip": {
+    "latency_s": 0.4237171999993734,
+    "model": "topy_4522",
+    "keys": [
+      "alpha",
+      "alt",
+      "beta",
+      "east",
+      "grounded",
+      "model",
+      "north",
+      "pitch",
+      "roll",
+      "sink",
+      "speed",
+      "time",
+      "yaw"
+    ]
+  },
+  "verified": [
+    "uproject JSON",
+    "source and configuration presence",
+    "Topy OBJ dimensions and Unreal axes",
+    "live UDP roundtrip against JSBSim"
+  ],
+  "not_verified": [
+    "Unreal Header Tool",
+    "C++ compilation",
+    "Unreal rendering"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "status": "provisional_unvalidated",
+  "measured_or_published": {
+    "mass_kg": 0.32,
+    "wing_area_m2": 0.2078,
+    "wingspan_m": 1.19,
+    "candidate_profile_data": "UIUC S4083(A) drag polar"
+  },
+  "assumed": {
+    "center_of_gravity_from_root_le_m": 0.061,
+    "inertia_kg_m2": {
+      "ixx": 0.014875,
+      "iyy": 0.0102,
+      "izz": 0.024225
+    },
+    "span_efficiency": 0.75,
+    "misc_drag_coefficient": 0.01,
+    "trim_alpha_deg": 3.5,
+    "vtail_servo_full_travel_time_s": 0.3333333333333333,
+    "stability_and_control_derivatives": "explicit in topy_4522.xml"
+  }
+}

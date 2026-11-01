@@ -1,0 +1,80 @@
+{
+  "status": "provisional_unvalidated",
+  "profile": "S4083(A) clean wind-tunnel data; Topy modification not included",
+  "metrics": {
+    "0.320": {
+      "optimiste": {
+        "max_glide_ratio": 13.466498281366404,
+        "best_glide_speed_mps": 7.057597869832702,
+        "best_glide_sink_mps": 0.5226465681080733,
+        "min_sink_mps": 0.484935410287094,
+        "min_sink_speed_mps": 5.551553319530513,
+        "best_glide_reynolds": 82160.71917934093,
+        "min_sink_reynolds": 64628.16693548688,
+        "clamped_min_sink_estimate_mps": 0.45105856337550637,
+        "clamped_min_sink_speed_mps": 4.532824304234632
+      },
+      "nominal": {
+        "max_glide_ratio": 11.641424936464675,
+        "best_glide_speed_mps": 6.953035083888808,
+        "best_glide_sink_mps": 0.5950752227418707,
+        "min_sink_mps": 0.5432891176219349,
+        "min_sink_speed_mps": 5.370026779385046,
+        "best_glide_reynolds": 80943.45604661593,
+        "min_sink_reynolds": 62514.93359978782,
+        "clamped_min_sink_estimate_mps": 0.5051063526499288,
+        "clamped_min_sink_speed_mps": 4.532824304234632
+      },
+      "prudent": {
+        "max_glide_ratio": 9.771167682398962,
+        "best_glide_speed_mps": 6.757135516221217,
+        "best_glide_sink_mps": 0.6879448430919625,
+        "min_sink_mps": 0.6221417434952967,
+        "min_sink_speed_mps": 5.162839718046671,
+        "best_glide_reynolds": 78662.89973505709,
+        "min_sink_reynolds": 60102.9744207338,
+        "clamped_min_sink_estimate_mps": 0.5782883741336718,
+        "clamped_min_sink_speed_mps": 4.532824304234632
+      }
+    },
+    "0.360": {
+      "optimiste": {
+        "max_glide_ratio": 13.774597430655435,
+        "best_glide_speed_mps": 7.4112264098649465,
+        "best_glide_sink_mps": 0.5366235425025792,
+        "min_sink_mps": 0.5030523355386481,
+        "min_sink_speed_mps": 6.041280126808176,
+        "best_glide_reynolds": 86277.47047450622,
+        "min_sink_reynolds": 70329.3002997613,
+        "clamped_min_sink_estimate_mps": 0.478419853312624,
+        "clamped_min_sink_speed_mps": 4.807786205177253
+      },
+      "nominal": {
+        "max_glide_ratio": 11.882337456611603,
+        "best_glide_speed_mps": 7.303551537757192,
+        "best_glide_sink_mps": 0.6124909238220996,
+        "min_sink_mps": 0.5657666537251229,
+        "min_sink_speed_mps": 5.695773526284783,
+        "best_glide_reynolds": 85023.97812582324,
+        "min_sink_reynolds": 66307.10021075507,
+        "clamped_min_sink_estimate_mps": 0.5357461907687524,
+        "clamped_min_sink_speed_mps": 4.807786205177253
+      },
+      "prudent": {
+        "max_glide_ratio": 9.950549848842485,
+        "best_glide_speed_mps": 7.101570867661635,
+        "best_glide_sink_mps": 0.7101093608749058,
+        "min_sink_mps": 0.6473370198554862,
+        "min_sink_speed_mps": 5.164390819093548,
+        "best_glide_reynolds": 82672.62892437467,
+        "min_sink_reynolds": 60121.03149622629,
+        "clamped_min_sink_estimate_mps": 0.6133674462468939,
+        "clamped_min_sink_speed_mps": 4.807786205177253
+      }
+    }
+  },
+  "stall_clmax_range": [
+    1.05,
+    1.25
+  ]
+}

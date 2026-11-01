@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<fdm_config name="RC Demo - UNVALIDATED" version="2.0">
+ <fileheader><author>SimPlaneurPerso</author><description>Synthetic RC demonstrator. Not a measured aircraft. No validated stall or ground handling.</description></fileheader>
+ <metrics>
+  <wingarea unit="M2">0.5</wingarea><wingspan unit="M">2.5</wingspan><chord unit="M">0.2</chord>
+  <location name="AERORP" unit="M"><x>0</x><y>0</y><z>0</z></location>
+  <location name="EYEPOINT" unit="M"><x>0</x><y>0</y><z>0</z></location>
+  <location name="VRP" unit="M"><x>0</x><y>0</y><z>0</z></location>
+ </metrics>
+ <mass_balance>
+  <ixx unit="KG*M2">0.15</ixx><iyy unit="KG*M2">0.09</iyy><izz unit="KG*M2">0.23</izz>
+  <emptywt unit="KG">1.5</emptywt>
+  <location name="CG" unit="M"><x>0</x><y>0</y><z>0</z></location>
+ </mass_balance>
+ <ground_reactions/>
+ <aerodynamics><axis name="LIFT"><function name="aero/lift"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><table><independentVar lookup="row">aero/alpha-rad</independentVar><tableData>-1.57 0
+-0.4 -0.6
+-0.2 -0.7
+-0.1 -0.2
+0 0.3
+0.1 0.8
+0.2 1.1
+0.3 0.8
+0.6 0.5
+1.57 0</tableData></table></product></function></axis><axis name="DRAG"><function name="aero/drag"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><sum><value>0.025</value><product><value>0.4</value><property>aero/alpha-rad</property><property>aero/alpha-rad</property></product></sum></product></function></axis><axis name="SIDE"><function name="aero/side"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><product><value>-0.5</value><property>aero/beta-rad</property></product></product></function></axis><axis name="ROLL"><function name="aero/roll"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property><sum><product><value>-0.08</value><property>aero/beta-rad</property></product><product><value>-0.5</value><property>aero/bi2vel</property><property>velocities/p-aero-rad_sec</property></product><product><value>0.12</value><property>fcs/aileron-cmd-norm</property></product></sum></product></function></axis><axis name="PITCH"><function name="aero/pitch"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/cbarw-ft</property><sum><value>0.015</value><product><value>-0.6</value><property>aero/alpha-rad</property></product><product><value>-12</value><property>aero/ci2vel</property><property>velocities/q-aero-rad_sec</property></product><product><value>-0.3</value><property>fcs/elevator-cmd-norm</property></product></sum></product></function></axis><axis name="YAW"><function name="aero/yaw"><product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property><sum><product><value>0.12</value><property>aero/beta-rad</property></product><product><value>-0.2</value><property>aero/bi2vel</property><property>velocities/r-aero-rad_sec</property></product><product><value>-0.08</value><property>fcs/rudder-cmd-norm</property></product></sum></product></function></axis></aerodynamics></fdm_config>

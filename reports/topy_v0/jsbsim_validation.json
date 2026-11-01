@@ -1,0 +1,58 @@
+{
+  "status": "software_verified_physics_unvalidated",
+  "neutral_120_hz": {
+    "frequency_hz": 120,
+    "duration_s": 20.0,
+    "mean_speed_mps_last_10s": 7.01203411075145,
+    "mean_sink_mps_last_10s": 0.6005270755758718,
+    "mean_alpha_deg_last_10s": 3.5000343310459674,
+    "altitude_loss_m": 12.014251649433376,
+    "final_roll_deg": -0.0005113363677626384,
+    "final_pitch_deg": -1.377333744666646,
+    "wall_time_s": 0.026518600003328174,
+    "realtime_margin": 754.1876267031416
+  },
+  "neutral_240_hz": {
+    "frequency_hz": 240,
+    "duration_s": 20.0,
+    "mean_speed_mps_last_10s": 7.012030184745692,
+    "mean_sink_mps_last_10s": 0.600525590397992,
+    "mean_alpha_deg_last_10s": 3.5000390975120927,
+    "altitude_loss_m": 12.014288099107148,
+    "final_roll_deg": -0.0005113711144761156,
+    "final_pitch_deg": -1.3779584848820277,
+    "wall_time_s": 0.056026000005658716,
+    "realtime_margin": 356.9771177306959
+  },
+  "integration_convergence": {
+    "speed_relative": 5.598954163395187e-07,
+    "sink_relative": 2.4731239276189886e-06,
+    "altitude_loss_relative": 3.033860472715636e-06
+  },
+  "elevator_step": {
+    "control": "elevator",
+    "command": 0.25,
+    "duration_s": 2.0,
+    "vtail_left_norm": 0.25,
+    "vtail_right_norm": 0.25,
+    "vtail_pitch_norm": 0.25,
+    "vtail_yaw_norm": 0.0,
+    "roll_deg": -0.0010898282704569912,
+    "pitch_deg": -10.659644419306797,
+    "heading_deg": 0.0012790377040327126,
+    "speed_mps": 8.704099836213803
+  },
+  "rudder_step": {
+    "control": "rudder",
+    "command": 0.25,
+    "duration_s": 2.0,
+    "vtail_left_norm": 0.25,
+    "vtail_right_norm": -0.25,
+    "vtail_pitch_norm": 0.0,
+    "vtail_yaw_norm": 0.25,
+    "roll_deg": -13.378177564229556,
+    "pitch_deg": -3.404216703207275,
+    "heading_deg": 341.58824884123845,
+    "speed_mps": 7.185075058104252
+  }
+}
