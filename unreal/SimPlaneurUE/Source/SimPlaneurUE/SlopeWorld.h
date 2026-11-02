@@ -20,6 +20,8 @@ class SIMPLANEURUE_API ASlopeWorld : public AActor
 
 public:
     ASlopeWorld();
+    static constexpr float ChaletX=-132400.f;
+    static constexpr float ChaletY=-57900.f;
     static constexpr float PilotX = 6400.f;
     static constexpr float PilotY = -1800.f;
     virtual void OnConstruction(const FTransform& Transform) override;
@@ -77,12 +79,16 @@ private:
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* WeatherClouds=nullptr;
     void BuildLaunchSite();
+    void BuildChalet(double X,double Y,bool Terrace);
     void UpdateWindsock(float DeltaSeconds, double WeatherTime);
-    UPROPERTY(Transient)
-    UProceduralMeshComponent* Windsock=nullptr;
-    FVector SockPivot=FVector::ZeroVector;
-    FVector SockFlow=FVector::ZeroVector;
-    bool bSockInitialized=false;
+    struct FSiteWindsock
+    {
+        TWeakObjectPtr<UProceduralMeshComponent> Mesh;
+        FVector Pivot;
+        FVector Flow=FVector::ZeroVector;
+        bool Initialized=false;
+    };
+    TArray<FSiteWindsock> SiteWindsocks;
     void UpdateSky();
     void BuildTerrain();
     void BuildLake();

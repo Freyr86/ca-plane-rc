@@ -15,6 +15,7 @@ class UCameraComponent;
 class SFlightMenu;
 class ULineBatchComponent;
 class UTexture2D;
+class UAudioComponent;
 
 UCLASS()
 class SIMPLANEURUE_API ASlopeFlightPawn : public APawn
@@ -39,7 +40,10 @@ public:
     bool IsFlightReady() const { return bModelReady; }
     bool IsAppearanceReady() const { return bAppearanceReady; }
     FGliderLoading Loading() const { return HangarModels[PreviewModel].Loading(); }
+    FFlapTravel FlapTravel() const { return HangarModels[PreviewModel].FlapTravel(); }
+    FFlapTravel DefaultFlapTravel() const { return HangarModels[PreviewModel].DefaultFlapTravel(); }
     FGliderControlGains ControlGains() const { return HangarModels[PreviewModel].ControlGains(); }
+    FGliderMotor MotorSettings() const { return HangarModels[PreviewModel].MotorSettings(); }
     FGliderLoading StandardLoading() const { return HangarModels[PreviewModel].StandardLoading(); }
     FGliderLoading LimitLoading(FGliderLoading Setting) const { return HangarModels[PreviewModel].LimitLoading(Setting); }
     const TCHAR* ModelName() const;
@@ -48,18 +52,22 @@ public:
     bool UsesAileronSteering() const { return AileronSteering[PreviewModel]; }
     bool IsControlInUse(EGliderControl Control) const;
     void BrowseModel(int32 Step);
-    void ApplyModelSettings(FGliderLoading Setting, bool UseAilerons, FGliderControlGains Gains);
+    void ApplyModelSettings(FGliderLoading Setting, bool UseAilerons, FGliderControlGains Gains, FFlapTravel Travel, FGliderMotor Motor);
     bool IsRadioActive() const { return Radio.IsDriving(); }
     bool IsMenuOpen() const { return bMenuOpen; }
     bool HasStartedFlight() const { return bStartedFlight; }
     bool IsHeldForLaunch() const { return bHeldForLaunch; }
+    bool UsesDiscusLaunch() const { return SelectedModel == 5; }
     bool IsThrowing() const { return ThrowSeconds >= 0.f; }
     bool IsWalking() const { return bHeldForLaunch && !IsThrowing() && !bNoclip && !bMenuOpen; }
+    const TCHAR* FlightCameraName() const;
     bool IsNoclip() const { return bNoclip; }
     FVector ExplorationPosition() const { return NoclipPosition; }
     float ExplorationSpeed() const { return NoclipSpeed; }
     FVector PilotPosition() const;
     FString ExplorationNotice() const { return SiteNotice; }
+    int32 LaunchSiteNumber() const { return SelectedSite; }
+    void SwitchLaunchSite();
     void ExploreScene();
     void Fly();
     void OpenMenu();
@@ -67,6 +75,9 @@ public:
     FFlightRadio Radio;
     FString GetContactLabel() const;
     float GetRadioAxis(int32 Index) const { return Radio.RawAxis(Index); }
+    bool HasFlaps() const { return Flight.HasFlaps(); }
+    double CrowFraction() const { return Flight.CrowFraction(); }
+    double FlapAngleDeg() const { return Flight.FlapAngleDeg(); }
     FString GetControlMode() const { return Radio.HasDevice() ? Radio.Status() : TEXT("Clavier"); }
     bool ShowInstruments() const {return bShowInstruments;}
 
@@ -108,10 +119,23 @@ private:
     UPROPERTY()
     UCameraComponent* Camera;
 
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> WindAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> WingAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> MotorAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> ServoAudio;
+    double LastServoTravel = 0.;
+    float AudioElapsed = 0.f;
+    void PrepareFlightAudio();
+    void UpdateFlightAudio(float DeltaSeconds);
+
     FGliderDynamics Flight;
-    FGliderDynamics HangarModels[2];
-    bool AvailableModels[2] = {};
-    bool AileronSteering[2] = {};
+    FGliderDynamics HangarModels[7];
+    bool AvailableModels[UE_ARRAY_COUNT(HangarModels)] = {};
+    bool AileronSteering[UE_ARRAY_COUNT(HangarModels)] = {};
     int32 SelectedModel = 0, PreviewModel = 0;
     double WeatherSeconds = 0.;
     double RidgeLift = 0.;
@@ -131,8 +155,8 @@ private:
     float PhysicsHz = 0.0f;
     int32 StepsThisSecond = 0;
     bool bModelReady = false;
-    bool bWideCamera = false;
-    bool bGroundCamera = true;
+    enum class EFlightView : uint8 { Ground, Chase, Wide, FPV };
+    EFlightView FlightView = EFlightView::Ground;
     bool bShowInstruments = false;
     bool bInspectMeadow = false;
     bool bNoclip = false;
@@ -143,6 +167,7 @@ private:
     void MoveNoclip(float DeltaSeconds);
     FVector2D PilotOffset = FVector2D::ZeroVector;
     FVector PilotSite = FVector::ZeroVector;
+    int32 SelectedSite=1;
     float LaunchHeading = 0.f;
     float WalkPitch = -3.f;
     void MoveWalking(float DeltaSeconds);

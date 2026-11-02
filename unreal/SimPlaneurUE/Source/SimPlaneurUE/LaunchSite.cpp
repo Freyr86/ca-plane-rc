@@ -67,60 +67,69 @@ void ASlopeWorld::BuildLaunchSite()
     for (int I=0;I<3;++I)
         Plank(BenchPoint(-12,0,Seat+22+I*12),{4,185,10},Timber[(I+1)%3]);
 
-    const float MastX=PilotX+760, MastY=PilotY+270;
-    const float Ground=TerrainHeightCm(MastX,MastY);
-    SockPivot=FVector(MastX,MastY,Ground+370);
-    Part(Tube,{MastX,MastY,Ground+182},{6,6,376},Metal,TEXT("mast"));
-    Part(Tube,{MastX,MastY,Ground+4},{25,25,12},Metal,TEXT("mast"));
-
-    Windsock=NewObject<UProceduralMeshComponent>(this);
-    Windsock->SetupAttachment(GetRootComponent());
-    Windsock->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    Windsock->SetCanEverAffectNavigation(false);
-    Windsock->RegisterComponent();
-    auto* Orange=Paint({.97,.105,.014});
-    auto* Ivory=Paint({.94,.91,.80});
-    constexpr int32 Sides=24;
-    for (int Band=0;Band<5;++Band)
+    auto AddWindsock=[&](float MastX,float MastY)
     {
-        TArray<FVector> Points,Normals;
-        TArray<int32> Faces;
-        for (int End=0;End<2;++End)
+        const float Ground=TerrainHeightCm(MastX,MastY);
+        const FVector Pivot=FVector(MastX,MastY,Ground+370);
+        Part(Tube,{MastX,MastY,Ground+182},{6,6,376},Metal,TEXT("mast"));
+        Part(Tube,{MastX,MastY,Ground+4},{25,25,12},Metal,TEXT("mast"));
+
+        auto* Windsock=NewObject<UProceduralMeshComponent>(this);
+        Windsock->SetupAttachment(GetRootComponent());
+        Windsock->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Windsock->SetCanEverAffectNavigation(false);
+        Windsock->RegisterComponent();
+        auto* Orange=Paint({.97,.105,.014});
+        auto* Ivory=Paint({.94,.91,.80});
+        constexpr int32 Sides=24;
+        for (int Band=0;Band<5;++Band)
         {
-            const double T=(Band+End)/5., Radius=17.-10.*T;
-            for (int J=0;J<Sides;++J)
+            TArray<FVector> Points,Normals;
+            TArray<int32> Faces;
+            for (int End=0;End<2;++End)
             {
-                const double Angle=2.*PI*J/Sides;
-                const FVector Out(0,FMath::Cos(Angle),FMath::Sin(Angle));
-                Points.Add(FVector(140*T,0,-10*T*T)+Radius*Out);
-                Normals.Add((Out+FVector(.07,0,0)).GetSafeNormal());
+                const double T=(Band+End)/5., Radius=17.-10.*T;
+                for (int J=0;J<Sides;++J)
+                {
+                    const double Angle=2.*PI*J/Sides;
+                    const FVector Out(0,FMath::Cos(Angle),FMath::Sin(Angle));
+                    Points.Add(FVector(140*T,0,-10*T*T)+Radius*Out);
+                    Normals.Add((Out+FVector(.07,0,0)).GetSafeNormal());
+                }
             }
+            for (int A=0;A<Sides;++A)
+            {
+                const int B=(A+1)%Sides, C=A+Sides, D=B+Sides;
+                Faces.Append({A,C,B,B,C,D,A,B,C,B,D,C}); // Open tube visible from both sides.
+            }
+            Windsock->CreateMeshSection_LinearColor(Band,Points,Faces,Normals,{},{},{},false);
+            Windsock->SetMaterial(Band,Band%2 ? Ivory : Orange);
         }
-        for (int A=0;A<Sides;++A)
-        {
-            const int B=(A+1)%Sides, C=A+Sides, D=B+Sides;
-            Faces.Append({A,C,B,B,C,D,A,B,C,B,D,C}); // Open tube visible from both sides.
-        }
-        Windsock->CreateMeshSection_LinearColor(Band,Points,Faces,Normals,{},{},{},false);
-        Windsock->SetMaterial(Band,Band%2 ? Ivory : Orange);
-    }
+        SiteWindsocks.Add({Windsock,Pivot});
+    };
+    AddWindsock(PilotX+760,PilotY+270);
+    AddWindsock(ChaletX+950,ChaletY+450);
     UpdateWindsock(0,0);
 }
 
 void ASlopeWorld::UpdateWindsock(float Dt,double Time)
 {
-    if (!Windsock) return;
-    const FVector SamplePoint(SockPivot.X*.01,SockPivot.Y*.01,-SockPivot.Z*.01);
-    const FVector Air=ValleyAir::Velocity(SamplePoint,Time);
-    const FVector Target(Air.X,Air.Y,-Air.Z);
-    SockFlow=bSockInitialized ? FMath::Lerp(SockFlow,Target,1.-FMath::Exp(-3.*Dt)) : Target;
-    bSockInitialized=true;
-    const double Speed=SockFlow.Size2D();
-    FRotator Facing=Windsock->GetRelativeRotation();
-    if (Speed>.08) Facing.Yaw=FMath::RadiansToDegrees(FMath::Atan2(SockFlow.Y,SockFlow.X));
-    const double Fill=FMath::Clamp(Speed/4.5,0.,1.);
-    Facing.Pitch=FMath::Lerp(-84.,FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(SockFlow.Z,Speed)),-18.,24.),FMath::SmoothStep(0.,1.,Fill));
-    Facing.Pitch+=Fill*1.5*FMath::Sin(Time*4.4);
-    // Mouth touches the swivel at mast head; tail lies downwind.
-    Windsock->SetRelativeLocationAndRotation(SockPivot+FRotator(0,Facing.Yaw,0).Vector()*14.,Facing);
+    for (FSiteWindsock& Sock : SiteWindsocks)
+    {
+        auto* Windsock=Sock.Mesh.Get();
+        if (!Windsock) continue;
+        const FVector SamplePoint(Sock.Pivot.X*.01,Sock.Pivot.Y*.01,-Sock.Pivot.Z*.01);
+        const FVector Air=ValleyAir::Velocity(SamplePoint,Time);
+        const FVector Target(Air.X,Air.Y,-Air.Z);
+        Sock.Flow=Sock.Initialized ? FMath::Lerp(Sock.Flow,Target,1.-FMath::Exp(-3.*Dt)) : Target;
+        Sock.Initialized=true;
+        const double Speed=Sock.Flow.Size2D();
+        FRotator Facing=Windsock->GetRelativeRotation();
+        if (Speed>.08) Facing.Yaw=FMath::RadiansToDegrees(FMath::Atan2(Sock.Flow.Y,Sock.Flow.X));
+        const double Fill=FMath::Clamp(Speed/4.5,0.,1.);
+        Facing.Pitch=FMath::Lerp(-84.,FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(Sock.Flow.Z,Speed)),-18.,24.),FMath::SmoothStep(0.,1.,Fill));
+        Facing.Pitch+=Fill*1.5*FMath::Sin(Time*4.4);
+        // Mouth touches the swivel at mast head; tail lies downwind.
+        Windsock->SetRelativeLocationAndRotation(Sock.Pivot+FRotator(0,Facing.Yaw,0).Vector()*14.,Facing);
+    }
 }

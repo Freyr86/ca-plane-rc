@@ -8,6 +8,31 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGliderMotorTest,"SimPlaneur.Physics.MotorPower",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGliderMotorTest::RunTest(const FString&)
+{
+    FGliderDynamics Model;
+    if (!TestTrue(TEXT("Load test aircraft"),Model.LoadModel(Model.TopyModelPath()))) return false;
+    TestFalse(TEXT("Motor is opt-in"),Model.MotorSettings().Enabled);
+    auto Speed = [&](bool Enabled,int32 Watts,double Throttle)
+    {
+        auto Flight = Model;
+        Flight.SetMotor({Enabled,Watts});
+        Flight.Reset(FVector::ZeroVector);
+        for (int I=0; I<30; ++I) Flight.Step(0.,0.,0.,Throttle);
+        return Flight.Airspeed();
+    };
+    const double Glide = Speed(false,100,0.);
+    const double Half = Speed(true,100,.5);
+    TestEqual(TEXT("Disabled motor ignores throttle"),Speed(false,100,1.),Glide);
+    TestEqual(TEXT("Zero throttle glides"),Speed(true,100,0.),Glide);
+    TestTrue(TEXT("Throttle increases speed"),Half>Glide && Speed(true,100,1.)>Half);
+    TestEqual(TEXT("Watt limit scales delivered power"),Speed(true,50,1.),Half);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTopyReferenceTest, "SimPlaneur.Physics.TopyReference",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -230,7 +255,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHandLaunchTest, "SimPlaneur.Physics.HandLaunch
 
 bool FHandLaunchTest::RunTest(const FString&)
 {
-    for (const TCHAR* Name : {TEXT("Topy4522"),TEXT("K3600")})
+    for (const TCHAR* Name : {TEXT("Topy4522"),TEXT("K3600"),TEXT("VJX2022")})
     {
         FGliderDynamics Model;
         if (!TestTrue(TEXT("Load hand-launch model"),Model.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels")/(FString(Name)+TEXT(".json"))))) return false;
@@ -251,6 +276,210 @@ bool FHandLaunchTest::RunTest(const FString&)
         TestTrue(TEXT("Throw transitions into forward flight"),FVector::DotProduct(Model.WorldPose().GetLocation()-Held.GetLocation(),Velocity.GetSafeNormal())>500.);
         TestFalse(TEXT("Hand launch stays finite"),Model.WorldPose().ContainsNaN());
     }
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVjxAileronTest, "SimPlaneur.Physics.VjxAilerons",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FVjxAileronTest::RunTest(const FString&)
+{
+    FGliderDynamics Right;
+    if (!TestTrue(TEXT("Load VJX"),Right.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/VJX2022.json")))) return false;
+    Right.Reset(FVector::ZeroVector);
+    Right.LaunchFrom(FTransform(FQuat::Identity,FVector(0,0,8000)),FVector(15,0,0));
+    FGliderDynamics Left = Right;
+    for (int32 I=0; I<30; ++I)
+    {
+        Right.Step(0,0,1);
+        Left.Step(0,0,-1);
+    }
+    const double BankR = Right.WorldPose().TransformVectorNoScale(FVector::RightVector).Z;
+    const double BankL = Left.WorldPose().TransformVectorNoScale(FVector::RightVector).Z;
+    TestTrue(TEXT("Ailerons alone lower the commanded wing"), BankR < -.05 && BankL > .05);
+    return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGliderFlapsTest, "SimPlaneur.Physics.Flaps",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGliderFlapsTest::RunTest(const FString&)
+{
+    for (const TCHAR* Name : {TEXT("Topy4522"),TEXT("K3600"),TEXT("VJX2022")})
+    {
+        FGliderDynamics Clean;
+        if (!TestTrue(Name,Clean.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels")/(FString(Name)+TEXT(".json"))))) return false;
+        Clean.Reset(FVector::ZeroVector);
+        FGliderDynamics Extended = Clean;
+        Extended.AdvanceFlaps(1.,.1);
+        if (FString(Name)==TEXT("Topy4522"))
+        {
+            TestFalse(TEXT("Two-axis Topy has fixed trailing edge"),Extended.HasFlaps());
+            TestEqual(TEXT("No flap movement"),Extended.FlapAngleDeg(),0.);
+            continue;
+        }
+        TestEqual(TEXT("Progressive servo"),Extended.FlapAngleDeg(),9.);
+        Extended.SetFlapTravel({12,45});
+        Extended.AdvanceFlaps(-1.,1.);
+        TestEqual(TEXT("Upper endpoint"),Extended.FlapAngleDeg(),-12.);
+        Extended.AdvanceFlaps(-.5,1.);
+        TestEqual(TEXT("Half negative travel"),Extended.FlapAngleDeg(),-6.);
+        Extended.AdvanceFlaps(0.,1.);
+        TestEqual(TEXT("Mid-stick is neutral"),Extended.FlapAngleDeg(),0.);
+        Extended.AdvanceFlaps(1.,1.);
+        TestEqual(TEXT("Lower endpoint"),Extended.FlapAngleDeg(),45.);
+        Extended.AdvanceFlaps(-.5,1.,1.);
+        TestEqual(TEXT("Crow overrides reflex at full deployment"),Extended.FlapAngleDeg(),45.);
+        TestEqual(TEXT("Outer wings at full crow"),Extended.CrowFraction(),1.);
+        Extended.AdvanceFlaps(-.5,1.,0.);
+        TestEqual(TEXT("Retracting crow restores manual reflex"),Extended.FlapAngleDeg(),-6.);
+        Extended.AdvanceFlaps(.35,1.);
+        const FTransform Pose(FQuat::Identity,FVector(0,0,8000));
+        for (auto* Model : {&Clean,&Extended})
+        {
+            Model->LaunchFrom(Pose,FVector(14,0,0));
+            Model->Step(0,0);
+        }
+        TestTrue(TEXT("Flapped wing sinks less at equal initial speed"),Extended.SinkRate()<Clean.SinkRate());
+        TestTrue(TEXT("Flaps increase drag"),Extended.Airspeed()<Clean.Airspeed());
+        Extended.AdvanceFlaps(0.,1.);
+        TestEqual(TEXT("Fully retracts"),Extended.FlapAngleDeg(),0.);
+    }
+    return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVjxInvertedGlideTest,"SimPlaneur.Physics.VjxInvertedGlide",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FVjxInvertedGlideTest::RunTest(const FString&)
+{
+    FGliderDynamics Model;
+    if (!TestTrue(TEXT("Load VJX"),Model.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/VJX2022.json")))) return false;
+    Model.Reset(FVector::ZeroVector);
+    Model.LaunchFrom(FTransform(FRotator(-4.5,0.,180.),FVector(0,0,10000)),FVector(16.,0.,-3.));
+    for (int32 I=0; I<720; ++I)
+    {
+        Model.Step(.62,0.,0.);
+        if (Model.WorldPose().ContainsNaN() || Model.WorldPose().GetRotation().GetUpVector().Z>-.90)
+            return TestTrue(TEXT("Stays inverted throughout"),false);
+    }
+    UE_LOG(LogTemp,Display,TEXT("VJX_INVERTED loss_m=%.2f speed=%.2f sink=%.2f"),100.-Model.Altitude(),Model.Airspeed(),Model.SinkRate());
+    TestTrue(TEXT("Unpowered inverted glide at moderate forward stick"),Model.Altitude()>76. && Model.Altitude()<100.);
+    TestTrue(TEXT("No runaway dive"),Model.Airspeed()>12. && Model.Airspeed()<20.);
+    return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFoxFlightTest,"SimPlaneur.Physics.Fox7m",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFoxFlightTest::RunTest(const FString&)
+{
+    FGliderDynamics Clean;
+    if (!TestTrue(TEXT("Load Fox"),Clean.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/Fox7m.json")))) return false;
+    TestEqual(TEXT("Scale flight mass"),Clean.StandardLoading().MassGrams,24000);
+    TestTrue(TEXT("Independent spoilers, clean wing"),Clean.HasSpoilers() && !Clean.HasFlaps());
+    Clean.Reset(FVector::ZeroVector);
+    Clean.LaunchFrom(FTransform(FRotator(1.,0.,0.),FVector(0,0,6000)),FVector(22.,0.,0.));
+    FGliderDynamics Braked=Clean, Right=Clean, Inverted=Clean;
+    Inverted.LaunchFrom(FTransform(FRotator(-5.,0.,180.),FVector(0,0,6000)),FVector(22.,0.,-1.));
+    for (int32 I=0; I<720; ++I)
+    {
+        Clean.Step(0,0,0);
+        Braked.AdvanceSpoilers(1.,FGliderDynamics::TimeStep);
+        Braked.Step(0,0,0);
+        Inverted.Step(.46,0,0);
+        if (I<60) Right.Step(0,0,1.);
+        if (Inverted.WorldPose().ContainsNaN() || Inverted.WorldPose().GetRotation().GetUpVector().Z>-.90)
+            return TestTrue(TEXT("Controlled inverted attitude throughout"),false);
+    }
+    TestTrue(TEXT("Air start transitions to free glide"),Clean.Altitude()>48 && Clean.Altitude()<65);
+    TestTrue(TEXT("Ailerons bank the Fox"),FMath::Abs(Right.WorldPose().Rotator().Roll)>15.);
+    TestTrue(TEXT("Spoilers increase altitude loss"),Braked.Altitude()<Clean.Altitude()-2.);
+    TestTrue(TEXT("Inverted glide without runaway dive"),Inverted.Altitude()>45. && Inverted.Altitude()<60. && Inverted.Airspeed()>16. && Inverted.Airspeed()<28.);
+    UE_LOG(LogTemp,Display,TEXT("FOX_FLIGHT clean_h=%.2f braked_h=%.2f inverted_h=%.2f inverted_V=%.2f bank=%.1f"),
+        Clean.Altitude(),Braked.Altitude(),Inverted.Altitude(),Inverted.Airspeed(),Right.WorldPose().Rotator().Roll);
+    return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FJS3GlideTest,"SimPlaneur.Physics.JS3Glide",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FJS3GlideTest::RunTest(const FString&)
+{
+    FGliderDynamics Clean;
+    if (!TestTrue(TEXT("Load JS-3"),Clean.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/JS3_9m.json")))) return false;
+    TestTrue(TEXT("Flaps and separate airbrakes"),Clean.HasFlaps() && Clean.HasSpoilers());
+    Clean.Reset(FVector::ZeroVector);
+    Clean.LaunchFrom(FTransform(FRotator(6.,0.,0.),FVector(0,0,157)),FVector(21.,0.,0.));
+    for (int32 I=0; I<120; ++I)
+    {
+        Clean.Step(0,0,0);
+        if (Clean.Altitude()<.5 || Clean.WorldPose().ContainsNaN())
+            return TestTrue(TEXT("Clears level ground after release"),false);
+    }
+    FGliderDynamics Braked=Clean, Banked=Clean;
+    for (int32 I=0; I<600; ++I)
+    {
+        Clean.Step(0,0,0);
+        Braked.AdvanceSpoilers(1.,FGliderDynamics::TimeStep);
+        Braked.Step(0,0,0);
+        if (I<120) Banked.Step(0,0,.7);
+    }
+    TestTrue(TEXT("Clean glide stays in flying speed range"),Clean.Airspeed()>13. && Clean.Airspeed()<30.);
+    TestTrue(TEXT("Airbrakes steepen the glide"),Braked.Altitude()<Clean.Altitude()-2.);
+    TestTrue(TEXT("Independent ailerons respond"),FMath::Abs(Banked.WorldPose().Rotator().Roll)>10.);
+    return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDiscusClimbTest,"SimPlaneur.Physics.DiscusClimb",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FDiscusClimbTest::RunTest(const FString&)
+{
+    FGliderDynamics Model;
+    if (!TestTrue(TEXT("Load Snipe 2"),Model.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/Snipe2.json")))) return false;
+    TestTrue(TEXT("Full-span flaperons"),Model.HasFlaps() && !Model.HasSpoilers());
+    Model.Reset(FVector::ZeroVector);
+    const FRotator Attitude(55.,0.,0.);
+    Model.LaunchFrom(FTransform(Attitude,FVector(0.,144.,145.)),Attitude.Vector()*30.16);
+    double Peak=Model.Altitude();
+    for (int32 I=0; I<1200; ++I)
+    {
+        Model.Step(0.,0.,0.);
+        Peak=FMath::Max(Peak,Model.Altitude());
+        if (Model.WorldPose().ContainsNaN() || Model.Altitude()<1.)
+            return TestTrue(TEXT("Stays airborne throughout the climb and transition"),false);
+    }
+    UE_LOG(LogTemp,Display,TEXT("DLG_CLIMB calm_peak_m=%.2f altitude_10s_m=%.2f airspeed_10s_mps=%.2f"),Peak,Model.Altitude(),Model.Airspeed());
+    TestTrue(TEXT("Converts release energy into a climb"),Peak>20. && Peak<48.);
+    TestTrue(TEXT("Returns to gliding flight"),Model.Altitude()<Peak && Model.Altitude()>Peak-7.
+        && Model.Airspeed()>4. && Model.Airspeed()<11. && FMath::Abs(Model.SinkRate())<2.);
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLongBowTest,"SimPlaneur.Physics.LongBowElevons",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLongBowTest::RunTest(const FString&)
+{
+    FGliderDynamics Glide;
+    if (!TestTrue(TEXT("Load LongBow"),Glide.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/LongBowMk2.json")))) return false;
+    TestTrue(TEXT("Published loading"),Glide.Loading()==FGliderLoading{1074,214});
+    TestTrue(TEXT("Two elevons and pusher"),Glide.HasElevons() && !Glide.HasFlaps() && Glide.MotorSettings().Enabled);
+    Glide.Reset(FVector::ZeroVector);
+    Glide.LaunchFrom(FTransform(FRotator::ZeroRotator,FVector(0,0,8000)),FVector(10.,0.,0.));
+    auto Roll=Glide, Pitch=Glide, Yaw=Glide, Power=Glide;
+    for (int32 I=0; I<48; ++I)
+    {
+        Roll.Step(0,0,.6);
+        Pitch.Step(-.6,0,0.);
+        Yaw.Step(0,.8,0.);
+        Power.Step(0,0,0.,.6);
+        Glide.Step(0,0,0.);
+    }
+    TestTrue(TEXT("Elevons bank the wing"),FMath::Abs(Roll.WorldPose().Rotator().Roll)>4.);
+    TestTrue(TEXT("Symmetric elevons pitch up"),Pitch.WorldPose().Rotator().Pitch>Glide.WorldPose().Rotator().Pitch+2.);
+    TestTrue(TEXT("No separate rudder"),Yaw.WorldPose().Equals(Glide.WorldPose(),1.e-5));
+    TestTrue(TEXT("Pusher accelerates"),Power.Airspeed()>Glide.Airspeed()+.4);
+    for (int32 I=0; I<1200; ++I) Glide.Step(0,0,0.);
+    UE_LOG(LogTemp,Display,TEXT("LONGBOW_GLIDE airspeed_mps=%.2f altitude_m=%.2f sink_mps=%.2f"),Glide.Airspeed(),Glide.Altitude(),Glide.SinkRate());
+    TestTrue(TEXT("Sustained neutral glide"),!Glide.WorldPose().ContainsNaN() && Glide.Altitude()>55.
+        && Glide.Airspeed()>5. && Glide.Airspeed()<20. && FMath::Abs(Glide.SinkRate())<3.);
     return !HasAnyErrors();
 }
 #endif

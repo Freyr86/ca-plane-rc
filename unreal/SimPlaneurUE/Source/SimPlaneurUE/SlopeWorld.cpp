@@ -135,6 +135,8 @@ void ASlopeWorld::OnConstruction(const FTransform& Transform)
     if (GetComponentsByTag(UActorComponent::StaticClass(), TEXT("GeneratedScenery")).Num() == 0)
     {
         AddScenery();
+        BuildChalet(-74000.,8500.,false);
+        BuildChalet(ChaletX,ChaletY,true);
     }
     SkyLight->RecaptureSky();
 }
@@ -312,8 +314,6 @@ void ASlopeWorld::AddScenery()
         GroupMesh->RegisterComponent();
         return GroupMesh;
     };
-    auto* Oaks = Group(TEXT("/Game/ArchVis/SampleScene/Tree/HillTree_02"));
-    auto* Spruces = Group(TEXT("/Game/Meadow/SilverFir/StaticMeshes/SilverFir"));
     auto* Boulders = Group(TEXT("/PCGBiomeSample/Meshes/PCG_Boulder_01"));
     SceneContact::Solid(Boulders,TEXT("rock"));
     auto Place = [&Random](UHierarchicalInstancedStaticMeshComponent* Batch, float X, float Y, float Height, float Embed)
@@ -325,15 +325,9 @@ void ASlopeWorld::AddScenery()
         Batch->AddInstance(FTransform(FRotator(0,Random.FRandRange(0,360),0), FVector(X,Y,Z), FVector(Scale)));
     };
 
-    auto* Canopies = Group(TEXT("/Game/Meadow/ForestCrown/StaticMeshes/ForestCrown"));
-    auto* Alders = Group(TEXT("/Game/Meadow/AlderCrown/StaticMeshes/AlderCrown"));
-    Canopies->SetCastShadow(false);
-    Canopies->SetVisibleInRayTracing(false);
-    Alders->SetCastShadow(false);
-    Alders->SetVisibleInRayTracing(false);
-    // Open glades alternate with overlapping stands. Outer crowns retain their
-    // silhouette without incurring the cost of thousands of masked needle meshes.
-    UHierarchicalInstancedStaticMeshComponent* TreeGroups[] = {Oaks,Spruces,Canopies,Alders,
+    auto* Oaks=Group(TEXT("/Game/ArchVis/SampleScene/Tree/HillTree_02"));
+    auto* Firs=Group(TEXT("/Game/Meadow/SilverFir/StaticMeshes/SilverFir"));
+    UHierarchicalInstancedStaticMeshComponent* TreeGroups[] = {Oaks,Firs,
         Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_a")),
         Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_b")),
         Group(TEXT("/Game/Meadow/LakePines/LakePines/StaticMeshes/pine_sapling_small_c"))};
@@ -355,33 +349,37 @@ void ASlopeWorld::AddScenery()
             if (Dist<6200 || FVector2D(X,Y).Size()<5600) continue;
             const float Z=TerrainHeightCm(X,Y);
             if (Z<Valley::WaterLevel+65.f || Z>27800.f || Random.FRand()<FMath::SmoothStep(15000.f,27800.f,Z)) continue;
+            // Preserve the seeded stands around the lake. Outlying stands now
+            // use the same detailed trees as the reference stand by the house.
             const bool LakeStand=X>=-135000 && X<=65000 && Y>=-75000 && Y<=125000;
-            const bool Full = LakeStand || Dist<39000.f || (Dist<71000.f && I%5==0);
-            const bool Oak = Full && Z<3500.f && Random.FRand()<.41f;
-            const bool Riparian = Z<6200.f && Random.FRand() < .48f;
-            // Smaller pines break up stand margins and leave the mature canopy above them.
+            const bool InnerStand=LakeStand || Dist<39000.f || (Dist<71000.f && I%5==0);
+            const bool LowlandOak=InnerStand && Z<3500.f && Random.FRand()<.41f;
+            const bool Riverside=Z<6200.f && Random.FRand()<.48f;
             const bool YoungPine=LakeStand && R>.70f*Radius && I%6==0;
-            const int32 Kind=YoungPine ? 4+(Stand+I)%3 : Full ? (Oak ? 0 : 1) : (Riparian ? 3 : 2);
+            const int32 Kind=YoungPine ? 2+(Stand+I)%3 : (LowlandOak || (!InnerStand && Riverside) ? 0 : 1);
             auto* Batch=TreeGroups[Kind];
             if (!Batch->GetStaticMesh()) continue;
             const FBox Bounds=Batch->GetStaticMesh()->GetBoundingBox();
             const float Height=YoungPine ? Random.FRandRange(165,430) : Random.FRandRange(800,1850);
             const float Scale=Height/FMath::Max(1.,Bounds.GetSize().Z);
             const float WidthScale=Scale*Random.FRandRange(.90f,1.45f);
-            Timber[Kind].Emplace(FRotator(0,Random.FRandRange(0,360),0),FVector(X,Y,Z-Bounds.Min.Z*Scale-(Full ? 12 : 45)),
+            const float Yaw=Random.FRandRange(0,360);
+            if (FVector2D(X-ChaletX-450.f,Y-ChaletY).SizeSquared()<FMath::Square(1550.f) ||
+                FVector2D(X+74000.f,Y-8500.f).SizeSquared()<FMath::Square(1000.f)) continue;
+            Timber[Kind].Emplace(FRotator(0,Yaw,0),FVector(X,Y,Z-Bounds.Min.Z*Scale-(YoungPine ? 3.f : 12.f)),
                                  FVector(WidthScale,WidthScale,Scale));
         }
     }
     for (int32 Kind=0;Kind<UE_ARRAY_COUNT(TreeGroups);++Kind) TreeGroups[Kind]->AddInstances(Timber[Kind],false,false,false);
-    UE_LOG(LogTemp,Display,TEXT("SimPlaneur: valley woodland %d oaks, %d silver firs, %d distant trees"),Timber[0].Num(),Timber[1].Num(),Timber[2].Num()+Timber[3].Num());
+    UE_LOG(LogTemp,Display,TEXT("SimPlaneur: woodland oaks=%d silver firs=%d young pines=%d"),Timber[0].Num(),Timber[1].Num(),Timber[2].Num()+Timber[3].Num()+Timber[4].Num());
     for (int32 I=0;I<540;++I)
     {
         const float X=Random.FRandRange(-80000,80000),Y=Random.FRandRange(-80000,80000);
         if (TerrainHeightCm(X,Y)>Valley::WaterLevel && FVector2D(X-PilotX,Y-PilotY).Size()>2200)
             Place(Boulders,X,Y,Random.FRandRange(45,170),19);
     }
-    // An oak to either side gives the pilot a close scale reference.
-    Place(Oaks,PilotX-900,PilotY+2800,920,8);
+    // Two landmarks give the pilot a close scale reference.
+    Place(TreeGroups[0],PilotX-900,PilotY+2800,920,8);
     Place(Oaks,PilotX+3750,PilotY+700,1020,8);
 
     auto* TreeColliders = NewObject<UInstancedStaticMeshComponent>(this);

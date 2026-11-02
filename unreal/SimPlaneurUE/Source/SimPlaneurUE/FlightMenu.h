@@ -39,6 +39,8 @@ private:
     EPage Page = EPage::Home;
     FString Message, Version;
     FGliderLoading DraftLoading;
+    FFlapTravel DraftFlaps;
+    FGliderMotor DraftMotor;
     FGliderControlGains DraftGains;
     ValleyAir::FWeatherSettings DraftWeather;
     bool bAdvancedModel = false;

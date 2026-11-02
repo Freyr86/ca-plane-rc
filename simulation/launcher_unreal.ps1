@@ -51,6 +51,9 @@ if ($args -contains '--test-physics') {
 }
 
 function MissingAircraftAssets {
+    foreach ($model in "VJX2022","Fox7mEffile","JS3_9m","Snipe2","LongBowMk2") {
+        if (!(Test-Path -LiteralPath (Join-Path $projectDir "Content/Aircraft/$model/$model.uasset"))) { $model }
+    }
     foreach ($prefix in 'Topy','K3600') {
         @("${prefix}Couleur","M_${prefix}Peinture","T_${prefix}_color","T_${prefix}_normal","T_${prefix}_metallic","T_${prefix}_roughness") |
             Where-Object { !(Test-Path -LiteralPath (Join-Path $projectDir "Content\Aircraft\$_.uasset")) }

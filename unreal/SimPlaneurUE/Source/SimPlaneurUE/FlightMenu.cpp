@@ -72,13 +72,54 @@ namespace
     {
     public:
         DECLARE_DELEGATE_OneParam(FSetOffset, int32);
-        SLATE_BEGIN_ARGS(SCgPlan) {} SLATE_ARGUMENT(bool, K3600) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
+        SLATE_BEGIN_ARGS(SCgPlan) {} SLATE_ARGUMENT(int32, ModelIndex) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
         void Construct(const FArguments& Args)
         {
             Offset = Args._OffsetMm;
             OnMove = Args._OnMove;
-            FullScale = 159.f / (Args._K3600 ? 3600.f : 1190.f);
-            if (Args._K3600)
+            FullScale = 159.f / (Args._ModelIndex == 6 ? 2155.f : Args._ModelIndex == 5 ? 1490.f : Args._ModelIndex == 4 ? 9000.f : Args._ModelIndex == 3 ? 7000.f : Args._ModelIndex == 2 ? 2930.f : Args._ModelIndex == 1 ? 3600.f : 1190.f);
+            if (Args._ModelIndex == 6)
+            {
+                Outline = {{{98,40.2f},{88.8f,44.5f},{29,72.2f},{18.5f,80.6f},{19,84},{45,76},{79,65},{98,63.5f}},
+                           {{98,40.2f},{107.2f,44.5f},{167,72.2f},{177.5f,80.6f},{177,84},{151,76},{117,65},{98,63.5f}}};
+            }
+            else if (Args._ModelIndex == 5)
+            {
+                Outline = {
+                    {{98,28},{96.8f,34},{96,47},{96.7f,60},{99.3f,60},{100,47},{99.2f,34}},
+                    {{96.7f,58},{97.6f,140},{98.4f,140},{99.3f,58}},
+                    {{98,49},{61,49},{39,52},{22,56},{18.5f,60},{21,62},{51,65},{98,67}},
+                    {{98,124},{88,125},{82,128},{82,131},{98,133}}
+                };
+            }
+            else if (Args._ModelIndex == 4)
+            {
+                Outline = {
+                    {{98,35},{96,38},{95.2f,46},{95.3f,56},{96.6f,63},{99.4f,63},{100.7f,56},{100.8f,46},{100,38}},
+                    {{96.6f,62},{97.6f,96},{98.4f,96},{99.4f,62}},
+                    {{98,54},{57,54},{35,55},{21,57},{18.5f,60},{19,61},{34,60},{55,60},{98,61}},
+                    {{98,90},{87,92},{86,94},{98,94}}
+                };
+            }
+            else if (Args._ModelIndex == 3)
+            {
+                Outline = {
+                    {{98,28},{95,31},{93.8f,40},{94,55},{95,65},{101,65},{102,55},{102.2f,40},{101,31}},
+                    {{95,63},{97.5f,110},{98.5f,110},{101,63}},
+                    {{98,52},{55,53},{22,57},{18.5f,58},{18.5f,60},{54,62},{98,65}},
+                    {{98,98},{82,102},{80.3f,104},{81,106},{98,106}}
+                };
+            }
+            else if (Args._ModelIndex == 2)
+            {
+                Outline = {
+                    {{98,34},{97,37},{96.8f,54},{97.2f,60},{98.8f,60},{99.2f,54},{99,37}},
+                    {{97.2f,59},{97.7f,106},{98.3f,106},{98.8f,59}},
+                    {{98,51},{60,51.5f},{37,53},{23,55.5f},{18.5f,58},{22,60},{46,62},{98,64}},
+                    {{98,101},{87,102},{83,104},{82.5f,106},{88,107},{98,107.5f}}
+                };
+            }
+            else if (Args._ModelIndex == 1)
             {
                 Outline = {
                     {{98,27.5f},{97,31},{96.7f,51},{97.3f,64},{98.7f,64},{99.3f,51},{99,31}},
@@ -99,6 +140,7 @@ namespace
             // Reflect the left wing and tail about the fuselage centreline.
             for (int32 I : {2,3})
             {
+                if (!Outline.IsValidIndex(I)) break;
                 auto Mirrored = Outline[I];
                 for (FVector2f& Point : Mirrored) Point.X = 196.f - Point.X;
                 Outline.Add(MoveTemp(Mirrored));
@@ -225,8 +267,8 @@ void SFlightMenu::Construct(const FArguments& Args)
             [
                 SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(FLinearColor(.008f,.02f,.023f,.81f)).Padding(FMargin(15,9))
                 [ SNew(SVerticalBox)
-                  +SVerticalBox::Slot().AutoHeight()[Text(TEXT("SITE  01     /     VALLÉE ALPINE"),9,Gold,TEXT("Bold"))]
-                  +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[Text(TEXT("La prairie du lac"),15,Paper,TEXT("Bold"))] ]
+                  +SVerticalBox::Slot().AutoHeight()[Live([this]{return FString::Printf(TEXT("SITE  %02d     /     VALLÉE ALPINE"),Plane->LaunchSiteNumber());},9,Gold)]
+                  +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[Live([this]{return FString(Plane->LaunchSiteNumber()==2 ? TEXT("Le chalet du versant") : TEXT("La prairie du lac"));},15,Paper)] ]
             ]
         ]
     ];
@@ -277,6 +319,8 @@ void SFlightMenu::Go(EPage Target)
         DraftLoading = Plane->Loading();
         bDraftAileronSteering = Plane->UsesAileronSteering();
         DraftGains = Plane->ControlGains();
+        DraftFlaps = Plane->FlapTravel();
+        DraftMotor = Plane->MotorSettings();
         bAdvancedModel = false;
     }
     Plane->ShowHangarModel(Page==EPage::Hangar);
@@ -337,6 +381,8 @@ void SFlightMenu::Home(SVerticalBox& List)
     auto FlyButton=Button(TEXT("Fly"),Plane->IsNoclip()?TEXT("Reprendre l’exploration"):(Plane->HasStartedFlight()?TEXT("Reprendre le vol"):TEXT("Prendre l’air")),[this]{Plane->Fly();},true);
     FlyButton->SetEnabled(TAttribute<bool>::CreateLambda([this]{ return Plane->IsFlightReady() && Plane->IsAppearanceReady(); }));
     Add(List,FlyButton,11);
+    Add(List,Choice(TEXT("SITE DE VOL"),[this]{return FString(Plane->LaunchSiteNumber()==2 ? TEXT("02 · Chalet du versant") : TEXT("01 · Prairie du lac"));},
+        [this](int32){Plane->SwitchLaunchSite(); Build();}),4);
     auto ExploreButton=Button(TEXT("Explore"),TEXT("Explorer la scène · noclip"),[this]{Plane->ExploreScene();});
     ExploreButton->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
     Add(List,ExploreButton,4);
@@ -357,13 +403,20 @@ void SFlightMenu::Hangar(SVerticalBox& List)
         DraftLoading = Plane->Loading();
         bDraftAileronSteering = Plane->UsesAileronSteering();
         DraftGains = Plane->ControlGains();
+        DraftFlaps = Plane->FlapTravel();
+        DraftMotor = Plane->MotorSettings();
         Build();
         FocusFirst();
     }),6);
     Add(List,Live([this]{
         if (!Plane->IsAppearanceReady()) return FString(TEXT("Chargement du planeur…"));
-        return FString(Plane->ModelIndex() == 0 ? TEXT("01 / 02   ·   1,19 m   ·   2 axes") :
-            TEXT("02 / 02   ·   3,60 × 1,77 m   ·   79,1 dm²"));
+        if (Plane->ModelIndex()==6) return FString(TEXT("07 / 07   ·   2,155 m   ·   Aile volante à élevons"));
+        if (Plane->ModelIndex()==5) return FString(TEXT("06 / 07   ·   1,49 m   ·   F3K · lancer disque"));
+        if (Plane->ModelIndex()==4) return FString(TEXT("05 / 07   ·   9,00 m   ·   Vol de distance"));
+        if (Plane->ModelIndex()==3) return FString(TEXT("04 / 07   ·   7,00 m   ·   Voltige · lancer assisté"));
+        if (Plane->ModelIndex()==2) return FString(TEXT("03 / 07   ·   2,93 m   ·   F3F   ·   vol expérimental"));
+        return FString(Plane->ModelIndex() == 0 ? TEXT("01 / 07   ·   1,19 m   ·   2 axes") :
+            TEXT("02 / 07   ·   3,60 × 1,77 m   ·   79,1 dm²"));
     },12,Light),12);
     if (!Plane->CanSelectModel()) { Add(List,Text(TEXT("Modèle indisponible"),12,Gold)); return; }
     Add(List,SNew(SHorizontalBox)
@@ -375,25 +428,26 @@ void SFlightMenu::Hangar(SVerticalBox& List)
     else ModelSetup(List);
     if (Plane->HasStartedFlight()) Add(List,Text(TEXT("Modifier puis appliquer prépare un nouveau départ."),11,Gold),5);
     Add(List,Button(TEXT("SelectAircraft"),TEXT("Appliquer et sélectionner"),[this]{
-        Plane->ApplyModelSettings(DraftLoading,bDraftAileronSteering,DraftGains); Go(EPage::Home);
+        Plane->ApplyModelSettings(DraftLoading,bDraftAileronSteering,DraftGains,DraftFlaps,DraftMotor); Go(EPage::Home);
     },true),5);
 }
 
 void SFlightMenu::ModelSetup(SVerticalBox& List)
 {
     Add(List,Choice(TEXT("MANCHE POUR LES VIRAGES"),[this]{
+        if (Plane->ModelIndex()==6) return FString(bDraftAileronSteering ? TEXT("Direction → roulis") : TEXT("Ailerons → roulis"));
         return FString(bDraftAileronSteering ? TEXT("Ailerons → direction") : TEXT("Direction → direction"));
     },[this](int32){ bDraftAileronSteering = !bDraftAileronSteering; }),4);
-    Add(List,Text(Plane->ModelIndex()==0 ? TEXT("Topy · mixage en V avec la profondeur") :
-        TEXT("Commande de la dérive du K3600"),11,Light),8);
+    Add(List,Text(Plane->ModelIndex()==6 ? TEXT("Élevons · profondeur et roulis combinés") : Plane->ModelIndex()==0 ? TEXT("Topy · mixage en V avec la profondeur") :
+        Plane->ModelIndex()>=2 ? TEXT("L’autre manche commande les ailerons") : TEXT("Commande de la dérive du K3600"),11,Light),8);
     Add(List,Choice(TEXT("MASSE TOTALE"),[this]{ return FString::Printf(TEXT("%d g"), DraftLoading.MassGrams); },
-        [this](int32 Step){ DraftLoading.MassGrams += 5 * Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),6);
+        [this](int32 Step){ DraftLoading.MassGrams += (Plane->ModelIndex()==6 ? 5 : Plane->ModelIndex()==5 ? 1 : Plane->ModelIndex()>=3 ? 100 : 5) * Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),6);
     Add(List,Choice(TEXT("CENTRAGE LONGITUDINAL"),[this]{ return FString::Printf(TEXT("%d mm"), DraftLoading.CgMm); },
         [this](int32 Step){ DraftLoading.CgMm += Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),4);
     Add(List,SNew(SHorizontalBox)
         +SHorizontalBox::Slot().FillWidth(.62f)[Text(TEXT("VUE DE DESSUS   ↑ NEZ"),10,Light)]
         +SHorizontalBox::Slot().FillWidth(.38f)[Text(TEXT("ZOOM CENTRAGE"),10,Light)],2);
-    Add(List,SNew(SCgPlan).Tag(TEXT("CgPlan")).K3600(Plane->ModelIndex()==1)
+    Add(List,SNew(SCgPlan).Tag(TEXT("CgPlan")).ModelIndex(Plane->ModelIndex())
         .OffsetMm_Lambda([this]{ return DraftLoading.CgMm-Plane->StandardLoading().CgMm; })
         .OnMove_Lambda([this](int32 Delta){ DraftLoading.CgMm=Plane->StandardLoading().CgMm+Delta; }),3);
     Add(List,Live([this]{
@@ -402,12 +456,43 @@ void SFlightMenu::ModelSetup(SVerticalBox& List)
         return FString::Printf(TEXT("Origine  %d mm   ·   %s"), Origin, *Shift);
     },12,Gold),4);
     Add(List,Text(TEXT("Glisser le point doré · cercle blanc d’origine."),11,Light),6);
+    if (Plane->ModelIndex()==6) Add(List,Text(TEXT("Notice LongBow Mk2 · 214 mm depuis le nez"),11,Light),4);
     if (Plane->ModelIndex()==1) Add(List,Text(TEXT("Notice K3600  ·  101–106 mm du bord d’attaque"),11,Light),4);
     Add(List,Button(TEXT("DefaultCg"),TEXT("Rétablir le centrage d’origine"),[this]{ DraftLoading.CgMm = Plane->StandardLoading().CgMm; }),4);
 }
 
 void SFlightMenu::AdvancedModel(SVerticalBox& List)
 {
+    Add(List,Text(TEXT("MOTORISATION"),12,Gold,TEXT("Bold")),5);
+    Add(List,SNew(SCheckBox).Tag(TEXT("MotorEnabled"))
+        .IsChecked_Lambda([this]{return DraftMotor.Enabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;})
+        .OnCheckStateChanged_Lambda([this](ECheckBoxState State){DraftMotor.Enabled = State == ECheckBoxState::Checked;})
+        [Text(TEXT("Activer le moteur"),12,Paper)],6);
+    Add(List,SNew(SHorizontalBox)
+        +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(TEXT("Puissance maximale (W)"),12,Paper)]
+        +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).Tag(TEXT("MotorMaxWatts"))
+            .IsEnabled_Lambda([this]{return DraftMotor.Enabled;})
+            .MinDesiredWidth(76).MinValue(1).MaxValue(FGliderMotor::MaxWatts).Delta(1)
+            .Value_Lambda([this]{return DraftMotor.Watts;})
+            .OnValueChanged_Lambda([this](int32 Watts){DraftMotor.Watts=Watts;})],5);
+    Add(List,Text(TEXT("Gaz et coupure moteur à attribuer dans Périphériques."),11,Light),12);
+    if (Plane->IsControlInUse(EGliderControl::Flaps))
+    {
+        Add(List,Text(TEXT("DÉBATTEMENT DES VOLETS"),12,Gold,TEXT("Bold")),5);
+        Add(List,Text(TEXT("0 % : haut     ·     50 % : neutre     ·     100 % : bas"),11,Light),8);
+        auto Angle = [this,&List](const TCHAR* Label, int32 FFlapTravel::*Field)
+        {
+            Add(List,SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(Label,12,Paper)]
+                +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).MinDesiredWidth(76)
+                    .MinValue(0).MaxValue(90).Delta(1)
+                    .Value_Lambda([this,Field]{return DraftFlaps.*Field;})
+                    .OnValueChanged_Lambda([this,Field](int32 Value){DraftFlaps.*Field=FMath::Clamp(Value,0,90);})],5);
+        };
+        Angle(TEXT("Vers le haut (°)"),&FFlapTravel::Up);
+        Angle(TEXT("Vers le bas (°)"),&FFlapTravel::Down);
+        Add(List,Button(TEXT("DefaultFlapTravel"),TEXT("Rétablir les débattements du modèle"),[this]{DraftFlaps=Plane->DefaultFlapTravel();}),12);
+    }
     Add(List,Text(TEXT("FORCE DES COMMANDES"),12,Gold,TEXT("Bold")),5);
     Add(List,Text(TEXT("100 % référence · 0 % nul · négatif inversé"),11,Light),14);
     auto Gain = [&](FName ControlTag,const TCHAR* Label,TFunction<int32()> Read,TFunction<void(int32)> Write)
@@ -426,10 +511,12 @@ void SFlightMenu::AdvancedModel(SVerticalBox& List)
                 .OnValueChanged_Lambda([Write](int32 Value){Write(FMath::Clamp(Value,-500,500));})]
             +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5,0,0,0)[Text(TEXT("%"),12,Light)],15);
     };
-    Gain(TEXT("GainYaw"),TEXT("Direction / lacet"),[this]{return DraftGains.Yaw;},[this](int32 Value){DraftGains.Yaw=Value;});
-    Gain(TEXT("GainRoll"),TEXT("Roulis induit"),[this]{return DraftGains.Roll;},[this](int32 Value){DraftGains.Roll=Value;});
+    const bool Elevons = Plane->ModelIndex()==6;
+    if (!Elevons) Gain(TEXT("GainYaw"),TEXT("Direction / lacet"),[this]{return DraftGains.Yaw;},[this](int32 Value){DraftGains.Yaw=Value;});
+    Gain(TEXT("GainRoll"),Elevons ? TEXT("Roulis par élevons") : TEXT("Roulis induit"),[this]{return DraftGains.Roll;},[this](int32 Value){DraftGains.Roll=Value;});
     Gain(TEXT("GainPitch"),TEXT("Profondeur"),[this]{return DraftGains.Pitch;},[this](int32 Value){DraftGains.Pitch=Value;});
-    auto Note=Text(TEXT("Sur ces modèles 2 axes, le manche de virage agit sur la direction et le roulis. Glisser les curseurs ou saisir un pourcentage."),11,Light);
+    auto Note=Text(Elevons ? TEXT("Les deux élevons travaillent ensemble en profondeur et en sens opposés en roulis.")
+        : TEXT("Sur ces modèles 2 axes, le manche de virage agit sur la direction et le roulis. Glisser les curseurs ou saisir un pourcentage."),11,Light);
     Note->SetAutoWrapText(true);
     Add(List,Note,12);
     Add(List,Button(TEXT("DefaultGains"),TEXT("Rétablir les forces à 100 %"),[this]{DraftGains={};}),12);
@@ -498,18 +585,17 @@ void SFlightMenu::Devices(SVerticalBox& List)
         .OnClicked_Lambda([this,&R]{R.CancelLearn();R.Invert(Control);return FReply::Handled();})
         [Live([this,&R]{return R.Binding(Control).Inverted?TEXT("Sens inversé   ⇄"):TEXT("Sens normal   ⇄");},12)];
     Add(*Right,InvertButton,4);
-    if (Spec.Type==T::Switch || Spec.Type==T::Phase)
+    if (Spec.Type==T::Switch)
         Add(*Right,SNew(SButton).ButtonStyle(&Style(false)).ContentPadding(FMargin(10,5)).IsEnabled(Available)
             .OnClicked_Lambda([this,&R]{R.CancelLearn();R.ToggleMode(Control);return FReply::Handled();})
             [Live([this,&R]{
-                if (ControlSpec(Control).Type==T::Phase) return R.Binding(Control).Toggle?TEXT("Boutons : parcourir les phases"):TEXT("Boutons : vitesse / neutre / thermique");
                 return R.Binding(Control).Toggle?TEXT("Mode bascule · un appui inverse l’état"):TEXT("Mode maintenu · suit l’interrupteur");
             },11)],4);
     Add(*Right,Live([this,&R]{
         const float V=R.Preview(Control);
         switch (ControlSpec(Control).Type)
         {
-            case T::Phase: return FString(V<-.5f?TEXT("Phase : vitesse"):V>.5f?TEXT("Phase : thermique"):TEXT("Phase : croisière"));
+            case T::CenteredRange: return FString::Printf(TEXT("Course   %.0f %%   ·   neutre à 50 %%"),(1.f+V)*50.f);
             case T::Pulse: case T::Switch: return FString(V>.5f?TEXT("Entrée active"):TEXT("Entrée au repos"));
             default: return FString::Printf(TEXT("Valeur   %+.0f %%"),V*100.f);
         }
@@ -517,7 +603,7 @@ void SFlightMenu::Devices(SVerticalBox& List)
     Add(*Right,SNew(SBox).HeightOverride(6)[SNew(SProgressBar).Percent_Lambda([this,&R]{
         const auto Type=ControlSpec(Control).Type;
         const float V=R.Preview(Control);
-        return TOptional<float>((Type==T::Signed || Type==T::Trim || Type==T::Phase)?(1.f+V)*.5f:V);
+        return TOptional<float>((Type==T::Signed || Type==T::Trim || Type==T::CenteredRange)?(1.f+V)*.5f:V);
     }).FillColorAndOpacity(Gold)]);
     Add(List,SNew(SHorizontalBox)
         +SHorizontalBox::Slot().FillWidth(.42f).Padding(0,0,16,0)[Left]

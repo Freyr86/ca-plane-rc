@@ -34,7 +34,7 @@ bool FGliderBindingsTest::RunTest(const FString&)
     R.CancelLearn();TestEqual(TEXT("Cancel keeps existing elevator"),R.Binding(A::Elevator).Plus,FName(TEXT("AxisY")));
     R.BeginLearn(A::Aileron,false);F.Axes[7]=-.6f;R.FeedFrame(F);R.Resolve(false);
     TestEqual(TEXT("Explicit sharing"),R.Binding(A::Aileron).Plus,R.Binding(A::Rudder).Plus);
-    R.BeginLearn(A::Camber,false);F.Axes[7]=.9f;R.FeedFrame(F);R.Resolve(true);
+    R.BeginLearn(A::Aux1,false);F.Axes[7]=.9f;R.FeedFrame(F);R.Resolve(true);
     TestTrue(TEXT("Move clears previous owners"),R.Binding(A::Rudder).Plus.IsNone() && R.Binding(A::Aileron).Plus.IsNone());
     R.BeginLearn(A::Camera,false);F.Down.Add(TEXT("B24"));R.FeedFrame(F);
     TestFalse(TEXT("Binding press never fires in flight"),R.Pressed(A::Camera));
@@ -48,10 +48,10 @@ bool FGliderBindingsTest::RunTest(const FString&)
     R.BeginLearn(A::Spoilers,false);F.Axes[6]=1.f;R.FeedFrame(F);
     TestEqual(TEXT("Spoiler fully open"),R.Command(A::Spoilers),1.f);
     F.Axes[6]=-1.f;R.FeedFrame(F);TestEqual(TEXT("Spoiler fully closed"),R.Command(A::Spoilers),0.f);
-    R.BeginLearn(A::Phase,false);F.Axes[2]=-1.f;R.FeedFrame(F);
-    TestEqual(TEXT("Thermal phase"),R.Command(A::Phase),1.f);
-    F.Axes[2]=0.f;R.FeedFrame(F);TestEqual(TEXT("Cruise phase"),R.Command(A::Phase),0.f);
-    F.Axes[2]=1.f;R.FeedFrame(F);TestEqual(TEXT("Speed phase"),R.Command(A::Phase),-1.f);
+    R.BeginLearn(A::Butterfly,false);F.Axes[2]=-1.f;R.FeedFrame(F);
+    TestEqual(TEXT("Full crow"),R.Command(A::Butterfly),1.f);
+    F.Axes[2]=0.f;R.FeedFrame(F);TestEqual(TEXT("Half crow"),R.Command(A::Butterfly),.5f);
+    F.Axes[2]=1.f;R.FeedFrame(F);TestEqual(TEXT("Crow retracted"),R.Command(A::Butterfly),0.f);
     R.BeginLearn(A::LowRates,false);F.Down.Add(TEXT("B5"));R.FeedFrame(F);R.ToggleMode(A::LowRates);
     F.Down.Remove(TEXT("B5"));R.FeedFrame(F);F.Down.Add(TEXT("B5"));R.FeedFrame(F);
     F.Down.Remove(TEXT("B5"));R.FeedFrame(F);TestEqual(TEXT("Latching rates stay on"),R.Command(A::LowRates),1.f);
@@ -89,6 +89,14 @@ bool FGliderBindingsTest::RunTest(const FString&)
     TestTrue(TEXT("Rates affect stick but preserve trim"),FMath::IsNearlyEqual(R.SteeringCommand(true),Untrimmed*.7f-.1f));
     F.Down.Reset(); R.Stick.Bindings[int32(A::Aileron)].Inverted=true; R.FeedFrame(F);
     TestTrue(TEXT("Selected axis inversion is respected"),R.SteeringCommand(true)<-.6f);
+    TestEqual(TEXT("Unassigned flaps rest at neutral"),R.Command(A::Flaps),0.f);
+    R.Stick.Bindings[int32(A::Flaps)].Plus=TEXT("AxisX");
+    for (float Travel : {-1.f,-.5f,0.f,.5f,1.f})
+    {
+        F.Axes[0]=Travel;
+        R.FeedFrame(F);
+        TestEqual(TEXT("Both halves of the flap axis reach flight controls"),R.Command(A::Flaps),Travel);
+    }
     R.Active=INDEX_NONE; R.Stick={}; R.Preferred=TEXT("Keyboard"); R.LoadProfile(R.Keys,true);
     R.Evaluate(R.Keys,{FName(TEXT("Right"))},true);
     TestEqual(TEXT("Keyboard right arrow steers through aileron input"),R.SteeringCommand(true),1.f);

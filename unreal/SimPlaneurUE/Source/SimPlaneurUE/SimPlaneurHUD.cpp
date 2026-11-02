@@ -105,7 +105,7 @@ void ASimPlaneurHUD::DrawHUD()
     {
         DrawRect(FLinearColor(.016f,.032f,.027f,.90f),20,Canvas->SizeY-124,650,64);
         const FString Prompt=Plane->IsThrowing() ? TEXT("Lancer en cours…") :
-            TEXT("MARCHE · planeur en main   •   ")+Plane->Radio.Shortcut(EGliderControl::HandLaunch)+TEXT(" : lancer");
+            TEXT("MARCHE · planeur en main   •   ")+Plane->Radio.Shortcut(EGliderControl::HandLaunch)+(Plane->UsesDiscusLaunch() ? TEXT(" : lancer disque") : TEXT(" : lancer"));
         DrawText(Prompt,FLinearColor(1.f,.75f,.32f),32,Canvas->SizeY-112);
         if (Plane->IsWalking()) DrawText(TEXT("WASD / ZQSD : marche lente   |   Souris : regarder et orienter le lancer   |   ")
             +Plane->Radio.Shortcut(EGliderControl::Noclip)+TEXT(" : noclip"),FLinearColor::White,32,Canvas->SizeY-88);
@@ -148,14 +148,17 @@ void ASimPlaneurHUD::DrawHUD()
             : TEXT("Modèle de vol indisponible");
         TextLine(Status, Plane->IsFlightReady() ? FLinearColor::White : FLinearColor(1.0f, 0.55f, 0.20f));
         TextLine(FString::Printf(TEXT("Pente %+.1f m/s   ·   Thermique / rafales %+.1f m/s"), Plane->GetRidgeLift(), -Plane->GetLocalWind().Z - Plane->GetRidgeLift()));
-        TextLine(Plane->GetControlMode());
+        FString Controls = Plane->GetControlMode();
+        if (Plane->HasFlaps()) Controls += FString::Printf(TEXT("   ·   Volets %.0f°"),Plane->FlapAngleDeg());
+        if (Plane->CrowFraction()>.005) Controls += FString::Printf(TEXT("   ·   Croco %.0f %%"),100.*Plane->CrowFraction());
+        TextLine(Controls);
         TextLine(FString::Printf(TEXT("Radio  X:%+.2f  Y:%+.2f  Z:%+.2f  Rx:%+.2f"),
             Plane->GetRadioAxis(0), Plane->GetRadioAxis(1), Plane->GetRadioAxis(2), Plane->GetRadioAxis(3)),
             Plane->IsRadioActive() ? FLinearColor(0.35f, 1.0f, 0.45f) : FLinearColor(0.72f, 0.72f, 0.72f));
         TextLine(FString::Printf(TEXT("Radio  Ry:%+.2f  Rz:%+.2f  S1:%+.2f  S2:%+.2f"),
             Plane->GetRadioAxis(4), Plane->GetRadioAxis(5),Plane->GetRadioAxis(6),Plane->GetRadioAxis(7)),
             Plane->IsRadioActive() ? FLinearColor(0.35f, 1.0f, 0.45f) : FLinearColor(0.72f, 0.72f, 0.72f));
-        TextLine(FString::Printf(TEXT("%s en main  •  %s caméra  •  Échap menu  •  %.0f Hz"), *Plane->Radio.Shortcut(EGliderControl::Relaunch),*Plane->Radio.Shortcut(EGliderControl::Camera),Plane->GetPhysicsHz()));
+        TextLine(FString::Printf(TEXT("%s en main  •  %s caméra (%s)  •  Échap menu  •  %.0f Hz"), *Plane->Radio.Shortcut(EGliderControl::Relaunch),*Plane->Radio.Shortcut(EGliderControl::Camera),Plane->FlightCameraName(),Plane->GetPhysicsHz()));
         TextLine(TEXT("Avant lancer : WASD marcher · souris regarder. Pilote fixe après lancer."));
         TextLine(FString::Printf(TEXT("%s  •  Filets d’air   ·   Bleu : brise   ·   Doré : ascendance"),*Plane->Radio.Shortcut(EGliderControl::WindTrails)));
     }

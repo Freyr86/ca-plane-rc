@@ -12,15 +12,9 @@ namespace
         {TEXT("TrimRudder"),TEXT("Trim de direction"),G::Trim,T::Trim,true},
         {TEXT("TrimElevator"),TEXT("Trim de profondeur"),G::Trim,T::Trim,true},
         {TEXT("TrimAileron"),TEXT("Trim des ailerons"),G::Trim,T::Trim,false},
-        {TEXT("Flaps"),TEXT("Volets"),G::Wing,T::Range,false},
-        {TEXT("Camber"),TEXT("Courbure / reflex"),G::Wing,T::Signed,false},
+        {TEXT("Flaps"),TEXT("Volets"),G::Wing,T::CenteredRange,false,TEXT("PageUp"),TEXT("PageDown")},
         {TEXT("Spoilers"),TEXT("Aérofreins"),G::Wing,T::Range,false},
-        {TEXT("Butterfly"),TEXT("Butterfly / crocodile"),G::Wing,T::Range,false},
-        {TEXT("Phase"),TEXT("Phase de vol"),G::Wing,T::Phase,false},
-        {TEXT("LaunchMode"),TEXT("Mode lancement"),G::Wing,T::Switch,false},
-        {TEXT("LandingMode"),TEXT("Mode atterrissage"),G::Wing,T::Switch,false},
-        {TEXT("Differential"),TEXT("Différentiel d’ailerons"),G::Wing,T::Range,false},
-        {TEXT("SnapFlap"),TEXT("Mixage profondeur–volets"),G::Wing,T::Switch,false},
+        {TEXT("Butterfly"),TEXT("Crocodile / butterfly"),G::Wing,T::Range,false},
         {TEXT("Motor"),TEXT("Gaz moteur"),G::Motor,T::Range,false},
         {TEXT("MotorCut"),TEXT("Coupure moteur"),G::Motor,T::Switch,false},
         {TEXT("Pylon"),TEXT("Pylône rétractable"),G::Motor,T::Switch,false},
@@ -28,7 +22,6 @@ namespace
         {TEXT("WheelBrake"),TEXT("Frein de roue"),G::Equipment,T::Range,false},
         {TEXT("TowRelease"),TEXT("Largage du crochet"),G::Equipment,T::Pulse,false},
         {TEXT("Ballast"),TEXT("Vidange du ballast"),G::Equipment,T::Switch,false},
-        {TEXT("Gyro"),TEXT("Gain du gyroscope"),G::Equipment,T::Range,false},
         {TEXT("Relaunch"),TEXT("Remettre le planeur en main"),G::Simulator,T::Pulse,true,TEXT("R")},
         {TEXT("Camera"),TEXT("Changer de caméra"),G::Simulator,T::Pulse,true,TEXT("C")},
         {TEXT("Instruments"),TEXT("Afficher les instruments"),G::Simulator,T::Pulse,true,TEXT("H")},
@@ -48,7 +41,7 @@ namespace
 const FControlSpec& ControlSpec(EGliderControl A) {return Controls[int32(A)];}
 const TCHAR* GroupLabel(EControlGroup G)
 {
-    static const TCHAR* Names[]={TEXT("Pilotage"),TEXT("Trims"),TEXT("Aile et phases"),TEXT("Motorisation"),
+    static const TCHAR* Names[]={TEXT("Pilotage"),TEXT("Trims"),TEXT("Aile"),TEXT("Motorisation"),
         TEXT("Équipement"),TEXT("Simulateur"),TEXT("Auxiliaires")};
     return Names[int32(G)];
 }

@@ -2,10 +2,14 @@
 #if !UE_BUILD_SHIPPING
 #include "FlightMenu.h"
 #include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/AudioComponent.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CommandLine.h"
@@ -49,6 +53,182 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         StaticCastSharedPtr<SButton>(B)->SimulateClick();
         return true;
     };
+    auto SendKey=[this](FKey Input,EInputEvent Event)
+    {
+        CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
+            nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
+    };
+    if (FParse::Param(FCommandLine::Get(),TEXT("FlightSoundProof")))
+    {
+        bool OK = true;
+        switch (MenuProofStep)
+        {
+        case 0:
+        {
+            FString SettingsFile;
+            OK = FParse::Value(FCommandLine::Get(),TEXT("GameUserSettingsINI="),SettingsFile) && Click(TEXT("Hangar"));
+            if (!OK) break;
+            if (!Radio.EditingKeyboard()) Radio.CycleDevice(1);
+            Radio.BeginLearn(EGliderControl::Motor,false);
+            Radio.MenuKey(TEXT("M"),true);
+            Radio.MenuKey(TEXT("M"),false);
+            ApplyModelSettings(Loading(),UsesAileronSteering(),ControlGains(),FlapTravel(),{true,60});
+            OK = Radio.EditingKeyboard() && Radio.Binding(EGliderControl::Motor).Plus==TEXT("M") && Click(TEXT("Back"));
+            break;
+        }
+        case 1:
+            OK = Click(TEXT("Fly")) && IsWalking() && WindAudio && WindAudio->IsPlaying();
+            SendKey(EKeys::Up,IE_Pressed);
+            break;
+        case 2:
+            OK = Flight.TotalServoTravel()>.1 && ServoAudio && !ServoAudio->IsPlaying();
+            SendKey(EKeys::Up,IE_Released);
+            break;
+        case 3:
+            SendKey(EKeys::M,IE_Pressed);
+            SendKey(EKeys::SpaceBar,IE_Pressed);
+            break;
+        case 4:
+            OK = !IsHeldForLaunch() && Flight.MotorPowerWatts()>0 && MotorAudio && MotorAudio->IsPlaying()
+                && WingAudio && WingAudio->IsPlaying();
+            SendKey(EKeys::SpaceBar,IE_Released);
+            SendKey(EKeys::M,IE_Released);
+            SendKey(EKeys::C,IE_Pressed);
+            break;
+        case 5:
+            OK = Flight.MotorPowerWatts()==0 && MotorAudio && !MotorAudio->IsPlaying() && FlightView==EFlightView::Chase;
+            SendKey(EKeys::C,IE_Released);
+            CycleCamera();
+            OK = OK && FlightView==EFlightView::Wide;
+            CycleCamera();
+            break;
+        case 6:
+        {
+            FMinimalViewInfo View;
+            CalcCamera(0.f,View);
+            OK = FlightView==EFlightView::FPV && View.Rotation.Equals(GetActorRotation(),.01)
+                && GetActorTransform().InverseTransformPosition(View.Location).X > 0. && View.FOV==90.f;
+            Shot(TEXT("fpv-flight.png"));
+            SendKey(EKeys::C,IE_Pressed);
+            break;
+        }
+        case 7:
+            OK = FlightView==EFlightView::Ground;
+            SendKey(EKeys::C,IE_Released);
+            FPlatformMisc::RequestExitWithStatus(false,OK ? 0 : 3);
+            break;
+        }
+        UE_LOG(LogTemp,Display,TEXT("FLIGHT_SOUND_PROOF step=%d pass=%d"),MenuProofStep,OK);
+        if (!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
+    if (FParse::Param(FCommandLine::Get(),TEXT("SpanProof")))
+    {
+        // Same pilot, pose, range and ground camera for every real flight mesh.
+        const int32 Model = MenuProofStep / 4;
+        bool OK = true;
+        switch (MenuProofStep % 4)
+        {
+        case 0:
+            OK = Click(TEXT("Hangar"));
+            if (OK && Model > 0) OK = Click(TEXT("MODÈLE+"));
+            OK = OK && ModelIndex()==Model && CanSelectModel();
+            break;
+        case 1:
+        {
+            if (!IsAppearanceReady() && Elapsed<60.f) return;
+            OK = IsAppearanceReady() && Click(TEXT("SelectAircraft")) && Click(TEXT("Fly")) && !IsMenuOpen();
+            bHeldForLaunch = false;
+            const FTransform Pose(FRotator(0.,160.,14.),PilotPosition()+FVector(1800.,0.,520.));
+            Flight.StopAt(Pose);
+            PreviousPose = Pose;
+            SetActorTransform(Pose);
+            break;
+        }
+        case 2:
+        {
+            const FBox Box = ImportedTopy->GetStaticMesh()->GetBoundingBox();
+            const FTransform MeshToWorld = ImportedTopy->GetComponentTransform();
+            FVector Left = Box.GetCenter(), Right = Left;
+            Left.Y = Box.Min.Y;
+            Right.Y = Box.Max.Y;
+            Left = MeshToWorld.TransformPosition(Left);
+            Right = MeshToWorld.TransformPosition(Right);
+            const double Span = FVector::Distance(Left,Right);
+            const double PhysicsSpan = 200.*Flight.RightTipOffsetNED().Size();
+            FVector2D L,R;
+            APlayerController* PC = CastChecked<APlayerController>(GetController());
+            OK = FMath::IsNearlyEqual(Span,PhysicsSpan,.2) && PC->ProjectWorldLocationToScreen(Left,L)
+                && PC->ProjectWorldLocationToScreen(Right,R);
+            UE_LOG(LogTemp,Display,TEXT("SPAN_PROOF %s visual_cm=%.2f physics_cm=%.2f screen_px=%.1f"),ModelName(),Span,PhysicsSpan,(L-R).Size());
+            const TCHAR* Shots[] = {TEXT("span-topy.png"),TEXT("span-k3600.png"),TEXT("span-vjx.png"),TEXT("span-fox.png"),TEXT("span-js3.png"),TEXT("span-snipe2.png"),TEXT("span-longbow.png")};
+            Shot(Shots[Model]);
+            break;
+        }
+        case 3:
+            if (Model==6) FPlatformMisc::RequestExit(false);
+            else OpenMenu();
+            break;
+        }
+        ++MenuProofStep;
+        if (!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        return;
+    }
+    // Isolated visual check using the same hangar buttons and lighting as a player.
+    const bool CheckJS3 = FParse::Param(FCommandLine::Get(),TEXT("JS3LaunchProof"));
+    const bool CheckDLG = FParse::Param(FCommandLine::Get(),TEXT("DLGLaunchProof"));
+    const bool CheckLongBow = FParse::Param(FCommandLine::Get(),TEXT("LongBowLaunchProof"));
+    const int32 ProofModel = CheckLongBow ? 6 : CheckDLG ? 5 : CheckJS3 ? 4 : 3;
+    if (CheckLongBow || CheckDLG || CheckJS3 || FParse::Param(FCommandLine::Get(),TEXT("FoxAppearanceProof")))
+    {
+        if (MenuProofStep==0 && !Click(TEXT("Hangar"))) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+        if (MenuProofStep==1)
+            for (int32 I=7; I>ProofModel; --I)
+                if (!Click(TEXT("MODÈLE-"))) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+        if (MenuProofStep==2)
+        {
+            if (ModelIndex()!=ProofModel || !CanSelectModel()) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+            if (Elapsed<18.f) return;
+            if (!IsAppearanceReady()) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+            Shot(CheckLongBow ? TEXT("longbow-hangar.png") : CheckDLG ? TEXT("dlg-hangar.png") : CheckJS3 ? TEXT("js3-hangar.png") : TEXT("fox-hangar.png"));
+        }
+        if (MenuProofStep==4 && Elapsed<22.f) return;
+        bool OK = true;
+        if (MenuProofStep==4) OK = Click(TEXT("SelectAircraft"));
+        if (MenuProofStep==5) OK = Click(TEXT("Fly"));
+        if (MenuProofStep==6)
+        {
+            const FVector Offset = TargetPosition - PilotPosition();
+            OK = IsWalking() && FMath::IsNearlyEqual(Offset.Z,145.,.1) && (CheckDLG ? FMath::IsNearlyEqual(Offset.Size2D(),144.,.1) : Offset.Size2D()<70.);
+            UE_LOG(LogTemp,Display,TEXT("SCALE_LAUNCH_TEST %s held_height_cm=%.1f"),ModelName(),Offset.Z);
+            if (CheckDLG) LaunchHeading = 67.f;
+            SendKey(EKeys::SpaceBar,IE_Pressed);
+        }
+        if (MenuProofStep==7)
+        {
+            if (IsHeldForLaunch() && Elapsed<30.f) return;
+            SendKey(EKeys::SpaceBar,IE_Released);
+            OK = !IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone()
+                && (CheckDLG ? FMath::IsNearlyEqual((Flight.LocalWind()-Flight.RelativeFlowNED()).Size(),30.16,.1)
+                             : CheckLongBow ? Flight.HasElevons() && Flight.MotorSettings().Enabled && FMath::IsNearlyEqual((Flight.LocalWind()-Flight.RelativeFlowNED()).Size(),8.04,.1)
+                             : FMath::IsNearlyEqual(Flight.Airspeed(),CheckJS3 ? 21. : 22.,.1));
+            if (CheckDLG)
+            {
+                const FRotator Aim(0.,LaunchHeading,0.);
+                const FVector Release = Aim.UnrotateVector(TargetPosition-PilotPosition());
+                const FVector Velocity = Aim.UnrotateVector(Flight.LocalWind()-Flight.RelativeFlowNED());
+                OK = OK && Release.X > 100. && FMath::Abs(Release.Y) < 1. && FMath::IsNearlyEqual(Release.Z,145.,1.)
+                    && Velocity.X > 0. && FMath::Abs(Velocity.Y) < .05;
+                UE_LOG(LogTemp,Display,TEXT("DLG_AIM_TEST forward_cm=%.1f lateral_cm=%.1f lateral_mps=%.3f"),Release.X,Release.Y,Velocity.Y);
+            }
+            UE_LOG(LogTemp,Display,TEXT("SCALE_LAUNCH_TEST %s released=%d airspeed_mps=%.2f"),ModelName(),OK,Flight.Airspeed());
+            FPlatformMisc::RequestExitWithStatus(false,OK ? 0 : 3);
+        }
+        if (!OK) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+        ++MenuProofStep;
+        return;
+    }
     auto DragCg = [this]()
     {
         const auto Widget = FindTagged(Menu.ToSharedRef(), TEXT("CgPlan"));
@@ -81,11 +261,6 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         return true;
     };
     bool OK=true;
-    auto SendKey=[this](FKey Input,EInputEvent Event)
-    {
-        CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
-            nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
-    };
     switch (MenuProofStep)
     {
         case 0: OK=bModelReady && IsMenuOpen() && !HasStartedFlight(); Shot(TEXT("club-accueil.png")); MenuProofLocation=TargetPosition; break;
@@ -175,9 +350,17 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         case 24: OK=Click(TEXT("Hangar")); break;
         case 25: OK=Click(TEXT("TabAdvanced")); break;
         case 26:
+        {
+            const auto Check=FindTagged(Menu.ToSharedRef(),TEXT("MotorEnabled"));
+            const auto Power=FindTagged(Menu.ToSharedRef(),TEXT("MotorMaxWatts"));
+            if (!Check || !Power) { OK=false; break; }
+            auto MotorCheck=StaticCastSharedPtr<SCheckBox>(Check);
+            if (!MotorCheck->IsChecked()) MotorCheck->ToggleCheckedState();
+            StaticCastSharedPtr<SSpinBox<int32>>(Power)->SetValue(432,true);
             OK=SetGain(TEXT("GainYaw"),500) && SetGain(TEXT("GainRoll"),-500) && SetGain(TEXT("GainPitch"),0)
                 && Menu->DraftControlGains()==FGliderControlGains{-500,0,500};
             Shot(TEXT("club-avance.png")); break;
+        }
         case 27: OK=Click(TEXT("TabSetup")); break;
         case 28: OK=Click(TEXT("TabAdvanced")) && Menu->DraftControlGains()==FGliderControlGains{-500,0,500}; break;
         case 29:
@@ -190,6 +373,11 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             FString SavedPath;
             OK=OK && FParse::Value(FCommandLine::Get(),TEXT("GameUserSettingsINI="),SavedPath);
             Saved.Read(SavedPath);
+            int32 Watts=0;
+            bool MotorEnabled=false;
+            OK=OK && MotorSettings()==FGliderMotor{true,432} && IsControlInUse(EGliderControl::MotorCut)
+                && Saved.GetBool(TEXT("SimPlaneur.Loading.K3600"),TEXT("MotorEnabled"),MotorEnabled) && MotorEnabled
+                && Saved.GetInt(TEXT("SimPlaneur.Loading.K3600"),TEXT("MotorMaxWatts"),Watts) && Watts==432;
             OK=OK && Saved.GetInt(TEXT("SimPlaneur.Loading.K3600"),TEXT("RollGainPercent"),ReadBack.Roll)
                 && Saved.GetInt(TEXT("SimPlaneur.Loading.K3600"),TEXT("PitchGainPercent"),ReadBack.Pitch)
                 && Saved.GetInt(TEXT("SimPlaneur.Loading.K3600"),TEXT("YawGainPercent"),ReadBack.Yaw)
@@ -197,7 +385,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             break;
         }
         case 30: OK=Click(TEXT("Hangar")); break;
-        case 31: OK=Click(TEXT("MODÈLE-")) && ControlGains()==MenuProofTopyGains; break;
+        case 31: OK=Click(TEXT("MODÈLE-")) && ControlGains()==MenuProofTopyGains && !MotorSettings().Enabled; break;
         case 32: OK=Click(TEXT("MODÈLE+")) && ControlGains()==FGliderControlGains{-500,0,500}; break;
         case 33: OK=Click(TEXT("TabAdvanced")); break;
         case 34:
@@ -338,7 +526,24 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             break;
         }
         case 62: OK=Click(TEXT("Back")); break;
-        case 63: UE_LOG(LogTemp,Display,TEXT("MENU_PROOF quit via menu")); OK=Click(TEXT("Quit")); break;
+        case 63:
+        {
+            FHitResult Ground;
+            OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==2 && FindPilotGround(PilotPosition(),Ground)
+                && Ground.GetComponent()->ComponentHasTag(TEXT("terrace")) && Click(TEXT("Fly")) && IsWalking();
+            break;
+        }
+        case 64: SendKey(EKeys::SpaceBar,IE_Pressed); break;
+        case 65:
+            OK=!IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone();
+            SendKey(EKeys::SpaceBar,IE_Released); OpenMenu(); break;
+        case 66:
+            OK=Click(TEXT("Explore")) && IsNoclip();
+            NoclipPosition=PilotSite+FVector(1600,1500,560);
+            NoclipRotation=(PilotSite+FVector(-140,100,135)-NoclipPosition).Rotation(); break;
+        case 67: Shot(TEXT("site-02-chalet.png")); break;
+        case 68: OpenMenu(); OK=Click(TEXT("SITE DE VOL-")) && LaunchSiteNumber()==1 && IsHeldForLaunch(); break;
+        case 69: UE_LOG(LogTemp,Display,TEXT("MENU_PROOF quit via menu")); OK=Click(TEXT("Quit")); break;
         default: OK=false; break;
     }
     UE_LOG(LogTemp,Display,TEXT("MENU_PROOF step=%d pass=%d"),MenuProofStep,OK);

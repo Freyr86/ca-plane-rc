@@ -70,6 +70,33 @@ def create_project_materials():
     library.save_loaded_asset(solid)
 
 
+def canopy_glazing(destination, name):
+    """Acrylic with stronger sky reflections at grazing angles."""
+    path = f"{destination}/{name}"
+    mat = assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset(
+        name, destination, unreal.Material, unreal.MaterialFactoryNew())
+    edit.delete_all_material_expressions(mat)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    color = edit.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector)
+    color.set_editor_property("constant", unreal.LinearColor(.095,.22,.29,1.))
+    edit.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    # A weak sky tint remains visible even on the shaded side of the cockpit.
+    tint = edit.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector)
+    tint.set_editor_property("constant", unreal.LinearColor(.027,.052,.070,1.))
+    edit.connect_material_property(tint, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    fresnel = edit.create_material_expression(mat, unreal.MaterialExpressionFresnel)
+    fresnel.set_editor_property("base_reflect_fraction", .44)
+    fresnel.set_editor_property("exponent", 2.2)
+    edit.connect_material_property(fresnel, "", unreal.MaterialProperty.MP_OPACITY)
+    roughness = edit.create_material_expression(mat, unreal.MaterialExpressionConstant)
+    roughness.r = .10
+    edit.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    edit.recompile_material(mat)
+    assert assets.save_loaded_asset(mat, False)
+    return mat
+
+
 def import_asset(path, name, options=None):
     task = unreal.AssetImportTask()
     task.filename = str(path)
@@ -167,3 +194,30 @@ for prefix in ("Topy", "K3600"):
         source = project_dir / "SourceAssets" / prefix
         painted_aircraft(source, prefix, painted_material(source, prefix))
 
+
+# Each source has a single mesh and embedded paint. Dimensions are in centimetres.
+for model, source, span, length in (("VJX2022","VJX",293.,135.5), ("Fox7mEffile","Fox",700.,369.), ("JS3_9m","JS3",900.,347.), ("Snipe2","Snipe2",149.,108.1), ("LongBowMk2","LongBowMk2",215.5,59.3)):
+    destination = f"{folder}/{model}"
+    asset_path = f"{destination}/{model}"
+    if assets.does_asset_exist(asset_path):
+        continue
+    task = unreal.AssetImportTask()
+    task.filename = str(project_dir / "SourceAssets" / source / f"{model}.glb")
+    task.destination_path = destination
+    task.automated = task.save = True
+    tools.import_asset_tasks([task])
+    meshes = [obj for obj in task.get_objects() if isinstance(obj, unreal.StaticMesh)]
+    if len(meshes) != 1:
+        raise RuntimeError(f"Import {model}: {task.imported_object_paths}")
+    mesh = meshes[0]
+    size = mesh.get_bounding_box().max - mesh.get_bounding_box().min
+    assert abs(size.y - span) < .2 and abs(size.x - length) < .2, size
+    assert mesh.get_material(0)
+    if model in ("Fox7mEffile","JS3_9m"):
+        assert mesh.get_num_sections(0) == 2 and mesh.get_material(1), "Missing canopy section"
+        glass_slot = next(i for i in range(2) if "Verriere" in mesh.get_material(i).get_name())
+        mesh.set_material(glass_slot, canopy_glazing(destination, "M_FoxAcrylic" if model == "Fox7mEffile" else "M_JS3Acrylic"))
+    if not assets.does_asset_exist(asset_path):
+        assert assets.rename_loaded_asset(mesh, asset_path)
+    assert assets.save_loaded_asset(mesh, False)
+    unreal.log(f"{model}_READY {mesh.get_path_name()} | {size} | {mesh.get_material(0).get_path_name()}")

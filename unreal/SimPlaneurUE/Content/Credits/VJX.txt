@@ -1,0 +1,5 @@
+VJX F3F 2022
+Conception : Jochen Guenzel et Mario Perner, https://github.com/jxjo/VJX
+Adaptation pour le simulateur : reconstruction du maillage et de la livrée de compétition 2022 à partir des plans, profils et photographies du projet VJX.
+Le modèle 3D adapté et sa livrée sont distribués sous Creative Commons Attribution – Partage dans les mêmes conditions 4.0 International.
+https://creativecommons.org/licenses/by-sa/4.0/

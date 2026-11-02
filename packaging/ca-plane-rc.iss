@@ -2,7 +2,7 @@
   #error GameDir must point to the packaged Windows directory
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.1"
+  #define AppVersion "0.5.2"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\work\release"

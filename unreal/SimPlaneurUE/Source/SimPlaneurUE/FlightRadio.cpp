@@ -327,21 +327,19 @@ void FFlightRadio::Evaluate(FProfile& P,const TSet<FName>& Down,bool Keyboard)
             O.Memory=FMath::Clamp(O.Memory+Sign*Step*.02f,-.25f,.25f);
             O.Value=Axis>=0?Sign*Centered(Physical,Centers[Axis])*.25f:O.Memory;
             break;
+        case T::CenteredRange:
+            if (Axis>=0) O.Value=V;
+            else if (!B.Minus.IsNone())
+            {
+                O.Memory=FMath::Clamp(O.Memory+Step*.2f,-1.f,1.f);
+                O.Value=Sign*O.Memory;
+            }
+            else O.Value=Sign*float(Plus);
+            break;
         case T::Range:
             if (Axis>=0) O.Value=.5f+.5f*V;
             else if (!B.Minus.IsNone()) {O.Memory=FMath::Clamp(O.Memory+Step*.1f,0.f,1.f);O.Value=B.Inverted?1.f-O.Memory:O.Memory;}
             else O.Value=B.Plus.IsNone()?0.f:float(B.Inverted?!Plus:Plus);
-            break;
-        case T::Phase:
-            if (Axis>=0) O.Value=V<-.33f?-1.f:V>.33f?1.f:0.f;
-            else if (B.Toggle)
-            {
-                O.Memory+=Sign*Step;
-                if (O.Memory>1) O.Memory=-1;
-                if (O.Memory< -1) O.Memory=1;
-                O.Value=O.Memory;
-            }
-            else O.Value=Sign*(float(Plus)-float(Minus));
             break;
         case T::Switch:
             if (Rise && B.Toggle) O.Memory=O.Memory>.5f?0.f:1.f;
@@ -358,7 +356,7 @@ float FFlightRadio::Command(A Action) const
     const float K=Keys.Outputs[int32(Action)].Value, R=Stick.Outputs[int32(Action)].Value;
     const T Type=ControlSpec(Action).Type;
     if (Type==T::Range || Type==T::Switch || Type==T::Pulse) return FMath::Max(K,R);
-    if (Type==T::Phase) return HasDevice() && !Stick.Bindings[int32(Action)].Plus.IsNone()?R:K;
+    if (Type==T::CenteredRange) return HasDevice() && !Stick.Bindings[int32(Action)].Plus.IsNone()?R:K;
     const float Limit=Type==T::Trim?.25f:1.f;
     return FMath::Clamp(K+R,-Limit,Limit);
 }

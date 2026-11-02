@@ -14,4 +14,4 @@ Les variantes glTF individuelles référencent les tampons binaires de leur coll
 
 Le dépôt public ne contient pas les fichiers ArchVis d’Epic : le lanceur les copie depuis l’installation locale d’Unreal Engine. Les rochers sont chargés directement depuis le plugin PCGBiomeSample installé avec le moteur. Ces ressources restent soumises aux conditions de leur fournisseur.
 
-Les trois jeunes pins des lisières utilisent les variantes A, B et C de [Pine Sapling Small](https://polyhaven.com/a/pine_sapling_small) de Poly Haven (CC0), avec les textures 1K et le masque des aiguilles.
+Les grands conifères utilisent le modèle SilverFir sur toute la carte. Les lisières du lac accueillent aussi les trois variantes de jeunes pins de [Pine Sapling Small](https://polyhaven.com/a/pine_sapling_small) de Poly Haven (CC0).

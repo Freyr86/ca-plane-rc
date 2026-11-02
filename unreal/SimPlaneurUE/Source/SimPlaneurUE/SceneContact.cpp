@@ -53,7 +53,7 @@ void SceneContact::Solid(UPrimitiveComponent* Component,FName Kind)
 }
 
 bool SceneContact::SweepTopy(UWorld* World,const AActor* Plane,const FTransform& From,const FTransform& To,
-                             FTransform& Rest,FName& Kind,FVector FuselageCentre,FVector2D SizeScale)
+                             FTransform& Rest,FName& Kind,FVector FuselageCentre,FVector2D SizeScale,double WingRisePerSpan,FVector4 Wheel,double TipSweepCm)
 {
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(TopySceneContact),false,Plane);
     const double Angle=FMath::RadiansToDegrees(From.GetRotation().AngularDistance(To.GetRotation()));
@@ -76,7 +76,12 @@ bool SceneContact::SweepTopy(UWorld* World,const AActor* Plane,const FTransform&
         // The wing panels follow the Topy's dihedral. The central capsule covers nose and tail.
         Probe(FuselageCentre,FVector::ForwardVector,4.5f * SizeScale.X,43.f * SizeScale.X);
         for (float Side : {-1.f,1.f})
-            Probe(FVector(0,Side*30,3.8) * SizeScale.Y,FVector(0,Side*59.5,7.5).GetSafeNormal(),4.0f,30.5f * SizeScale.Y);
+        {
+            const FVector HalfWing(-.5*TipSweepCm,Side*30*SizeScale.Y,30*SizeScale.Y*WingRisePerSpan);
+            Probe(HalfWing,HalfWing.GetSafeNormal(),4.0f,FVector2D(30.5*SizeScale.Y,.5*TipSweepCm).Size());
+        }
+        if (Wheel.W > 0.)
+            Probe(FVector(Wheel.X,Wheel.Y,Wheel.Z),FVector::UpVector,Wheel.W,Wheel.W);
         if (First.bBlockingHit)
         {
             Rest.Blend(Start,End,First.Time);

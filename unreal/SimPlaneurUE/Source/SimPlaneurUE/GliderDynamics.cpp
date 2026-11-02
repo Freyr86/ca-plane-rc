@@ -71,6 +71,8 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
             Number(*Obj,TEXT("angle"),C.Angle) && Number(*Obj,TEXT("rate"),C.Rate) && Number(*Obj,TEXT("control"),C.Control);
     };
     if (!ReadMoment(TEXT("roll"),M.Roll) || !ReadMoment(TEXT("pitch"),M.Pitch) || !ReadMoment(TEXT("yaw"),M.Yaw)) return false;
+    if (Json->HasField(TEXT("extra_down_elevator_moment")) &&
+        !Number(Json,TEXT("extra_down_elevator_moment"),M.ExtraDownElevatorMoment)) return false;
     const TArray<TSharedPtr<FJsonValue>>* Items;
     TArray<double> Row;
     if (!Json->TryGetArrayField(TEXT("inertia_diagonal_kg_m2"),Items) || !Numbers(*Items,Row) || Row.Num()!=3 ||
@@ -91,8 +93,29 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
         }
     }
     if (!Increasing(M.Angles)) return false;
+    Json->TryGetNumberField(TEXT("discus_launch_pitch_trim"),M.LaunchPitchTrim);
+    Json->TryGetNumberField(TEXT("spoiler_drag_coefficient"),M.SpoilerDrag);
     Json->TryGetBoolField(TEXT("conventional_tail"), M.ConventionalTail);
+    Json->TryGetNumberField(TEXT("aileron_roll_coefficient"), M.AileronEffect);
+    if (Json->HasField(TEXT("flaps")))
+    {
+        const FJson* Flaps;
+        double Down=0., Up=0.;
+        if (!Json->TryGetObjectField(TEXT("flaps"),Flaps) ||
+            !Number(*Flaps,TEXT("max_down_deg"),Down) || Down<=0. || Down>90. ||
+            !Number(*Flaps,TEXT("affected_wing_fraction"),M.FlapAreaFraction) ||
+            M.FlapAreaFraction<=0. || M.FlapAreaFraction>1.) return false;
+        if ((*Flaps)->HasField(TEXT("max_up_deg")) &&
+            (!Number(*Flaps,TEXT("max_up_deg"),Up) || Up<0. || Up>90.)) return false;
+        M.StandardTravel = {FMath::RoundToInt32(Up),FMath::RoundToInt32(Down)};
+        M.Travel = M.StandardTravel;
+    }
+    Json->TryGetBoolField(TEXT("elevons"),M.Elevons);
+    Json->TryGetNumberField(TEXT("aileron_yaw_coefficient"),M.YawFromAilerons);
     M.StandardMass = M.Mass;
+    int32 MotorWatts=FMath::RoundToInt32(150.*M.StandardMass);
+    const bool Powered=Json->TryGetNumberField(TEXT("motor_watts"),MotorWatts) && MotorWatts>0;
+    M.SetMotor({Powered,MotorWatts});
     M.StandardInertia = M.Inertia;
     if (Json->HasField(TEXT("reference_cg_from_root_le_mm")) &&
         !Json->TryGetNumberField(TEXT("reference_cg_from_root_le_mm"), M.ReferenceCgMm)) return false;
@@ -124,8 +147,30 @@ void FGliderDynamics::SetControlGains(FGliderControlGains Setting)
     Gains = {FMath::Clamp(Setting.Roll,-500,500),FMath::Clamp(Setting.Pitch,-500,500),FMath::Clamp(Setting.Yaw,-500,500)};
 }
 
+void FGliderDynamics::AdvanceFlaps(double Command,double DeltaSeconds,double Crow)
+{
+    if (!HasFlaps()) return;
+    Crow = FMath::Clamp(Crow,0.,1.);
+    const double Manual = FMath::Clamp(Command,-1.,1.)*(Command<0. ? Travel.Up : Travel.Down);
+    const double Target = FMath::Lerp(Manual,double(Travel.Down),Crow);
+    const double Slew = 90.*FMath::Max(DeltaSeconds,0.);
+    const double OldFlap = FlapAngle, OldCrow = CrowServo;
+    FlapAngle += FMath::Clamp(Target-FlapAngle,-Slew,Slew);
+    CrowServo += FMath::Clamp(Crow-CrowServo,-Slew/80.,Slew/80.);
+    ServoTravel += FMath::Max(FMath::Abs(FlapAngle-OldFlap)/45., FMath::Abs(CrowServo-OldCrow));
+    const double Angle = FMath::DegreesToRadians(FlapAngle);
+    // Partial-span plain flaps: lift grows first, then pressure drag dominates.
+    FlapDeltaLift = .95*FlapAreaFraction*FMath::Sin(2.*Angle) - .20*CrowServo; // Raised outboard ailerons unload the tips.
+    FlapDeltaDrag = .78*FlapAreaFraction*FMath::Square(FMath::Sin(Angle)) + .10*CrowServo*CrowServo;
+    FlapDeltaPitch = -.06*FlapAreaFraction*FMath::Sin(Angle);
+}
 void FGliderDynamics::Reset(FVector WindNED)
 {
+    AppliedMotorWatts = 0.;
+    ServoTravel = 0.;
+    CrowServo=FlapAngle=FlapDeltaLift=FlapDeltaDrag=FlapDeltaPitch=0.;
+    LaunchTrimTimeLeft=0.;
+    SpoilerPosition=0.;
     SetWind(WindNED);
     Position=FVector(0,0,-80);
     const double Theta=FMath::DegreesToRadians(-1.4), Alpha=FMath::DegreesToRadians(3.5);
@@ -133,11 +178,11 @@ void FGliderDynamics::Reset(FVector WindNED)
     // The original hand launch specified ground velocity before enabling the breeze.
     Velocity=Attitude.RotateVector(7.*FVector(FMath::Cos(Alpha),0,FMath::Sin(Alpha)));
     Omega=FVector::ZeroVector;
-    Left=Right=0.;
+    Left=Right=AileronServo=0.;
     Stopped=false;
 }
 void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVector Rates,double Height,
-    double PitchServo,double YawServo,FVector& Linear,FVector& Angular) const
+    double PitchServo,double YawServo,double RollServo,double ShaftWatts,FVector& Linear,FVector& Angular) const
 {
     const FVector Air=BodyToWorld.UnrotateVector(WorldVelocity-Wind);
     const double V=Air.Size();
@@ -151,45 +196,86 @@ void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVec
         const int32 Index = Row * Speeds.Num() + SpeedColumn;
         return FMath::Lerp(Drag[Index], Drag[Index + 1], SpeedFraction);
     };
-    const double CL = FMath::Lerp(Lift[AngleRow], Lift[AngleRow + 1], AngleFraction);
+    const double CleanLift = FMath::Lerp(Lift[AngleRow], Lift[AngleRow + 1], AngleFraction);
+    const double CL = CleanLift*(1.-.23*SpoilerPosition) + FlapDeltaLift*FMath::Clamp(1.-FMath::Abs(Alpha)/.52,0.,1.);
+    const double ExtraInducedDrag = (CL*CL-CleanLift*CleanLift)*Area/(PI*.85*Span*Span);
     // Scale control effectiveness after the servo/mixer limits so values above
     // 100% remain effective at full stick. Neutral stability derivatives stay physical.
     const double PitchControl = PitchServo * (Gains.Pitch * .01);
     const double YawControl = YawServo * (Gains.Yaw * .01);
     const double RollControl = YawServo * (Gains.Roll * .01);
     const double CD = FMath::Lerp(DragAtSpeed(AngleRow), DragAtSpeed(AngleRow + 1), AngleFraction)
-                    + DragElevator * PitchControl * PitchControl + DragRudder * YawControl * YawControl;
+                    + SpoilerDrag*SpoilerPosition + FlapDeltaDrag + ExtraInducedDrag + DragElevator * PitchControl * PitchControl + DragRudder * YawControl * YawControl;
     const double CY=SideBeta*Beta+SideRudder*YawControl;
     double Sa,Ca,Sb,Cb;
     FMath::SinCos(&Sa,&Ca,Alpha); FMath::SinCos(&Sb,&Cb,Beta);
     const FVector Flow(Ca*Cb,Sb,Sa*Cb), Side(-Ca*Sb,Cb,-Sa*Sb), Down(-Sa,0,Ca);
     const double Rho=1.225*FMath::Pow(1.-2.25577e-5*FMath::Clamp(Height,-1000.,11000.),4.25588);
     const double QS=.5*Rho*V*V*Area;
-    const FVector Force=QS*(-CD*Flow+CY*Side-CL*Down);
+    FVector Force=QS*(-CD*Flow+CY*Side-CL*Down);
     const double Inv2V=V>1.e-6 ? .5/V : 0.;
     // An updraft reaching one wing first acts through the same roll damping
     // derivative as a spanwise velocity difference caused by body rotation.
     const double AirRollRate = BodyToWorld.UnrotateVector(WingWindDifference).Z / Span;
     const FVector Torque=FVector::CrossProduct(FVector(CgShift, 0., 0.), Force) + QS*FVector(
-        Span*Roll.Evaluate(Beta,Span*Inv2V*(Rates.X-AirRollRate),RollControl),
-        Chord*Pitch.Evaluate(Alpha,Chord*Inv2V*Rates.Y,PitchControl),
-        Span*Yaw.Evaluate(Beta,Span*Inv2V*Rates.Z,YawControl));
+        Span*(Roll.Evaluate(Beta,Span*Inv2V*(Rates.X-AirRollRate),RollControl) + AileronEffect*RollServo*(Gains.Roll*.01)),
+        Chord*(Pitch.Evaluate(Alpha,Chord*Inv2V*Rates.Y,PitchControl)+FlapDeltaPitch
+            +ExtraDownElevatorMoment*FMath::Clamp(PitchControl,0.,1.)*FMath::Max(PitchControl,0.)),
+        Span*(Yaw.Evaluate(Beta,Span*Inv2V*Rates.Z,YawControl)+YawFromAilerons*RollServo*Gains.Roll*.01));
+    // Generic folding propeller on the centreline. An effective slipstream
+    // speed of 12 m/s limits static thrust; at speed thrust falls with airspeed.
+    if (ShaftWatts>0.)
+        Force.X += .75*ShaftWatts/FMath::Sqrt(144.+FMath::Square(FMath::Max(0.,Air.X)));
     Linear=BodyToWorld.RotateVector(Force/Mass)+FVector(0,0,9.80665);
     Angular=(Torque-FVector::CrossProduct(Rates,Inertia*Rates))/Inertia;
 }
 void FGliderDynamics::Step(double Elevator,double Rudder)
 {
+    Step(Elevator,Rudder,0.);
+}
+void FGliderDynamics::Step(double Elevator,double Rudder,double Aileron,double Throttle)
+{
     if (Stopped) return;
+    if (LaunchTrimTimeLeft > 0.)
+    {
+        // Fade the DLG speed preset out on the first climb. Full pilot input
+        // always overrides it, and a later dive does not re-arm it.
+        const double Blend = FMath::Clamp((Airspeed()-6.5)/3.5,0.,1.) * FMath::Min(1.,LaunchTrimTimeLeft/2.);
+        Elevator += LaunchPitchTrim * Blend * (1.-FMath::Abs(Elevator));
+        LaunchTrimTimeLeft = Blend > 0. ? LaunchTrimTimeLeft - TimeStep : 0.;
+    }
+    const double OldLeft=Left, OldRight=Right, OldAileron=AileronServo;
+    AdvanceServos(Elevator,Rudder,Aileron,TimeStep);
+    const double Half = .5 * TimeStep;
+    FVector Accel,Angular;
+    AppliedMotorWatts = Motor.Enabled ? Motor.Watts*FMath::Clamp(Throttle,0.,1.) : 0.;
+    Accelerations(Attitude,Velocity,Omega,-Position.Z,.5*(OldLeft+OldRight),.5*(OldLeft-OldRight),OldAileron,AppliedMotorWatts,Accel,Angular);
+    const FVector MidVelocity=Velocity+Half*Accel, MidRates=Omega+Half*Angular;
+    const FQuat MidAttitude=Turn(Attitude,Omega,Half);
+    Accelerations(MidAttitude,MidVelocity,MidRates,-Position.Z-Half*Velocity.Z,
+        .25*(OldLeft+OldRight+Left+Right),.25*(OldLeft-OldRight+Left-Right),.5*(OldAileron+AileronServo),AppliedMotorWatts,Accel,Angular);
+    Position+=TimeStep*MidVelocity;
+    Velocity+=TimeStep*Accel;
+    Attitude=Turn(Attitude,MidRates,TimeStep);
+    Omega+=TimeStep*Angular;
+}
+void FGliderDynamics::AdvanceServos(double Elevator,double Rudder,double Aileron,double DeltaSeconds)
+{
     // Aircraft command convention: positive elevator deflects down; positive
     // rudder input here is the same tail command used in the reference polar model.
-    const double MaxTravel = ServoRate * TimeStep;
+    const double MaxTravel = ServoRate * DeltaSeconds;
     const auto MoveServo = [MaxTravel](double Current, double Requested)
     {
         const double Target = FMath::Clamp(Requested, -1., 1.);
         return Current + FMath::Clamp(Target - Current, -MaxTravel, MaxTravel);
     };
     double NextLeft, NextRight;
-    if (ConventionalTail)
+    if (Elevons)
+    {
+        NextLeft = MoveServo(Left, Elevator + Aileron);
+        NextRight = MoveServo(Right, Elevator - Aileron);
+    }
+    else if (ConventionalTail)
     {
         const double PitchServo = MoveServo(.5*(Left+Right), Elevator);
         const double YawServo = MoveServo(.5*(Left-Right), Rudder);
@@ -201,17 +287,9 @@ void FGliderDynamics::Step(double Elevator,double Rudder)
         NextLeft = MoveServo(Left, Elevator + Rudder);
         NextRight = MoveServo(Right, Elevator - Rudder);
     }
-    const double Half = .5 * TimeStep;
-    FVector Accel,Angular;
-    Accelerations(Attitude,Velocity,Omega,-Position.Z,.5*(Left+Right),.5*(Left-Right),Accel,Angular);
-    const FVector MidVelocity=Velocity+Half*Accel, MidRates=Omega+Half*Angular;
-    const FQuat MidAttitude=Turn(Attitude,Omega,Half);
-    Accelerations(MidAttitude,MidVelocity,MidRates,-Position.Z-Half*Velocity.Z,
-        .25*(Left+Right+NextLeft+NextRight),.25*(Left-Right+NextLeft-NextRight),Accel,Angular);
-    Position+=TimeStep*MidVelocity;
-    Velocity+=TimeStep*Accel;
-    Attitude=Turn(Attitude,MidRates,TimeStep);
-    Omega+=TimeStep*Angular;
+    const double NextAileron = Elevons ? .5*(NextLeft-NextRight) : MoveServo(AileronServo,Aileron);
+    ServoTravel += FMath::Max3(FMath::Abs(NextLeft-Left),FMath::Abs(NextRight-Right),FMath::Abs(NextAileron-AileronServo));
+    AileronServo = NextAileron;
     Left = NextLeft;
     Right = NextRight;
 }
@@ -222,6 +300,7 @@ FTransform FGliderDynamics::WorldPose() const
 }
 void FGliderDynamics::StopAt(const FTransform& Contact)
 {
+    AppliedMotorWatts = 0.;
     const FVector P=Contact.GetLocation()*.01;
     Attitude=MirrorAttitude(Contact.GetRotation());
     Position=FVector(P.X,P.Y,-P.Z) - Attitude.GetForwardVector() * CgShift;
@@ -233,6 +312,7 @@ void FGliderDynamics::LaunchFrom(const FTransform& Pose, const FVector& WorldVel
 {
     StopAt(Pose);
     Velocity=FVector(WorldVelocityMps.X,WorldVelocityMps.Y,-WorldVelocityMps.Z);
-    Left=Right=0.;
+    LaunchTrimTimeLeft = LaunchPitchTrim != 0. && WorldVelocityMps.Size() > 20. ? 6. : 0.;
+    Left=Right=AileronServo=0.;
     Stopped=false;
 }

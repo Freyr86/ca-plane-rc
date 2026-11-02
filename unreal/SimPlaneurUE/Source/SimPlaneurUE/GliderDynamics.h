@@ -8,10 +8,24 @@ struct FGliderLoading
     bool operator==(const FGliderLoading&) const = default;
 };
 
+struct FFlapTravel
+{
+    int32 Up=0, Down=0;
+    bool operator==(const FFlapTravel&) const = default;
+};
+
 struct FGliderControlGains
 {
     int32 Roll = 100, Pitch = 100, Yaw = 100;
     bool operator==(const FGliderControlGains&) const = default;
+};
+
+struct FGliderMotor
+{
+    static constexpr int32 MaxWatts = 10000;
+    bool Enabled = false;
+    int32 Watts = 100;
+    bool operator==(const FGliderMotor&) const = default;
 };
 
 // SI units. World coordinates are north/east/down; body coordinates are
@@ -23,6 +37,34 @@ struct FGliderDynamics
     static FString TopyModelPath();
     void Reset(FVector WindNED=FVector(-2,0,0));
     void Step(double Elevator,double Rudder);
+    void Step(double Elevator,double Rudder,double Aileron,double Throttle=0.);
+    FGliderMotor MotorSettings() const { return Motor; }
+    double MotorPowerWatts() const { return AppliedMotorWatts; }
+    void SetMotor(FGliderMotor Value) { Motor={Value.Enabled,FMath::Clamp(Value.Watts,1,FGliderMotor::MaxWatts)}; }
+    bool HasElevons() const { return Elevons; }
+    bool HasSpoilers() const { return SpoilerDrag > 0.; }
+    void AdvanceSpoilers(double Command,double DeltaSeconds)
+    {
+        if (HasSpoilers())
+        {
+            const double Before = SpoilerPosition;
+            SpoilerPosition = FMath::FInterpConstantTo(Before,FMath::Clamp(Command,0.,1.),DeltaSeconds,1.5);
+            ServoTravel += FMath::Abs(SpoilerPosition-Before);
+        }
+    }
+    bool HasFlaps() const { return FlapAreaFraction > 0.; }
+    FFlapTravel FlapTravel() const { return Travel; }
+    FFlapTravel DefaultFlapTravel() const { return StandardTravel; }
+    void SetFlapTravel(FFlapTravel Value)
+    {
+        if (HasFlaps()) Travel={FMath::Clamp(Value.Up,0,90),FMath::Clamp(Value.Down,0,90)};
+    }
+    double CrowFraction() const { return CrowServo; }
+    double FlapAngleDeg() const { return FlapAngle; }
+    void AdvanceFlaps(double Command,double DeltaSeconds,double Crow=0.);
+    void AdvanceServos(double Elevator,double Rudder,double Aileron,double DeltaSeconds);
+    // Accumulated stroke lets audio observe short movements between mix updates.
+    double TotalServoTravel() const { return ServoTravel; }
     FGliderLoading StandardLoading() const { return {FMath::RoundToInt32(StandardMass * 1000.), ReferenceCgMm}; }
     FGliderLoading Loading() const { return {FMath::RoundToInt32(Mass * 1000.), ReferenceCgMm + FMath::RoundToInt32(CgShift * 1000.)}; }
     FGliderLoading LimitLoading(FGliderLoading Setting) const;
@@ -60,17 +102,28 @@ private:
     double StandardMass = 0., CgShift = 0.;
     int32 ReferenceCgMm = 0;
     FMoment Roll,Pitch,Yaw;
+    double ExtraDownElevatorMoment = 0.;
     FGliderControlGains Gains;
+    FGliderMotor Motor;
+    double AppliedMotorWatts = 0.;
     TArray<double> Angles, Speeds, Lift, Drag;
 
     FVector Position=FVector::ZeroVector, Velocity=FVector::ZeroVector, Wind=FVector::ZeroVector;
     FVector WingWindDifference = FVector::ZeroVector;
     FQuat Attitude=FQuat::Identity;
     FVector Omega=FVector::ZeroVector;
-    double Left=0,Right=0;
+    double Left=0,Right=0,AileronServo=0,AileronEffect=0;
+    double ServoTravel=0.;
     bool Stopped=false;
-    bool ConventionalTail=false;
+    bool ConventionalTail=false, Elevons=false;
+    double YawFromAilerons=0.;
+    FFlapTravel Travel, StandardTravel;
+    double FlapAreaFraction=0., FlapAngle=0.;
+    double LaunchPitchTrim=0.;
+    double LaunchTrimTimeLeft=0.;
+    double SpoilerDrag=0., SpoilerPosition=0.;
+    double CrowServo=0., FlapDeltaLift=0., FlapDeltaDrag=0., FlapDeltaPitch=0.;
 
     void Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVector Rates,double Height,
-                       double PitchServo,double YawServo,FVector& Linear,FVector& Angular) const;
+                       double PitchServo,double YawServo,double RollServo,double ShaftWatts,FVector& Linear,FVector& Angular) const;
 };
