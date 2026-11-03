@@ -127,6 +127,12 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
     {
         // Same pilot, pose, range and ground camera for every real flight mesh.
         const int32 Model = MenuProofStep / 4;
+        if (Model==6 && !AvailableModels[Model])
+        {
+            MenuProofStep += 4;
+            if (Model+1 == UE_ARRAY_COUNT(HangarModels)) FPlatformMisc::RequestExit(false);
+            return;
+        }
         bool OK = true;
         switch (MenuProofStep % 4)
         {
