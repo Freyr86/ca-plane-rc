@@ -1,4 +1,8 @@
 #include "FlightMenu.h"
+#include "FlightMap.h"
+#include "ImageUtils.h"
+#include "Engine/Texture2D.h"
+#include "Widgets/Images/SImage.h"
 #include "Rendering/SlateRenderer.h"
 #include "SlopeFlightPawn.h"
 #include "SlopeWorld.h"
@@ -10,6 +14,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Styling/CoreStyle.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -18,6 +23,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SDPIScaler.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Notifications/SProgressBar.h"
@@ -27,16 +33,17 @@
 
 namespace
 {
-    const FLinearColor Ink(.011f,.026f,.032f), Paper(.94f,.95f,.88f), Light(.67f,.77f,.74f), Gold(1.f,.60f,.14f);
-    const FLinearColor Panel(.009f,.023f,.028f,.94f), Rule(.18f,.25f,.25f,.55f);
+    const FLinearColor Ink(.009f,.078f,.076f), Paper(1.f,.886f,.65f), Light(.81f,.84f,.71f), Gold(.91f,.63f,.29f);
+    const FLinearColor Coral(.85f,.142f,.077f), Panel(.008f,.068f,.066f,.97f), Rule(.71f,.53f,.29f,.55f);
+    const FLinearColor MutedInk(.065f,.145f,.13f), Rust(.32f,.061f,.028f), Sand(.91f,.76f,.49f);
     const FSlateBrush* Fill() { return FCoreStyle::Get().GetBrush("WhiteBrush"); }
     FText T(const FString& Value) { return FText::FromString(Value); }
 
-    TSharedRef<STextBlock> Text(const FString& Value,int32 Size,FLinearColor Color=Paper,FName Face=TEXT("Regular"))
+    TSharedRef<STextBlock> Text(const FString& Value,int32 Size,FLinearColor Color=Ink,FName Face=TEXT("Regular"))
     {
         return SNew(STextBlock).Text(T(Value)).Font(FCoreStyle::GetDefaultFontStyle(Face,Size)).ColorAndOpacity(Color);
     }
-    TSharedRef<STextBlock> Live(TFunction<FString()> Read,int32 Size,FLinearColor Color=Paper)
+    TSharedRef<STextBlock> Live(TFunction<FString()> Read,int32 Size,FLinearColor Color=Ink)
     {
         return SNew(STextBlock).Text_Lambda([Read]{return T(Read());})
             .Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"),Size)).ColorAndOpacity(Color);
@@ -49,7 +56,7 @@ namespace
     {
         return SNew(SBox).HeightOverride(1)[SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Color)];
     }
-    const FButtonStyle& Style(bool Primary)
+    const FButtonStyle& Style(bool Primary,bool OnDark=false)
     {
         static const auto Make=[](FLinearColor Normal,FLinearColor Hover,FLinearColor Press)
         {
@@ -58,10 +65,80 @@ namespace
             S.SetNormalPadding(FMargin(0)).SetPressedPadding(FMargin(0));
             return S;
         };
-        static const FButtonStyle Main=Make(Gold,FLinearColor(1.f,.75f,.34f),FLinearColor(.82f,.43f,.07f));
+        static const FButtonStyle Main=Make(Coral,FLinearColor(.98f,.24f,.13f),FLinearColor(.71f,.11f,.065f));
         static const FButtonStyle Other=Make(FLinearColor(.05f,.083f,.087f,.91f),FLinearColor(.105f,.17f,.174f),FLinearColor(.08f,.135f,.14f));
-        return Primary ? Main : Other;
+        static const FButtonStyle Field=Make(Sand,Gold,FLinearColor(.88f,.63f,.32f));
+        return Primary ? Main : OnDark ? Other : Field;
     }
+    const FSpinBoxStyle& NumberFieldStyle()
+    {
+        static const FSpinBoxStyle Field=[]{
+            auto S=FCoreStyle::Get().GetWidgetStyle<FSpinBoxStyle>("SpinBox");
+            S.SetBackgroundBrush(FSlateColorBrush(Sand)).SetHoveredBackgroundBrush(FSlateColorBrush(Gold))
+                .SetActiveBackgroundBrush(FSlateColorBrush(Gold)).SetInactiveFillBrush(FSlateColorBrush(Sand))
+                .SetHoveredFillBrush(FSlateColorBrush(Gold)).SetActiveFillBrush(FSlateColorBrush(Gold))
+                .SetForegroundColor(Ink);
+            S.ArrowsImage.TintColor=Ink;
+            return S;
+        }();
+        return Field;
+    }
+    const FCheckBoxStyle& CheckStyle()
+    {
+        static const FCheckBoxStyle Check=[]{
+            auto S=FCoreStyle::Get().GetWidgetStyle<FCheckBoxStyle>("Checkbox");
+            const FVector2f Size(18,18);
+            S.SetBackgroundImage(FSlateRoundedBoxBrush(Paper,2.f,Ink,1.f,Size))
+                .SetBackgroundHoveredImage(FSlateRoundedBoxBrush(Gold,2.f,Ink,1.f,Size))
+                .SetBackgroundPressedImage(FSlateRoundedBoxBrush(Sand,2.f,Ink,1.f,Size));
+            S.CheckedImage.TintColor=Ink;
+            S.CheckedHoveredImage.TintColor=Ink;
+            S.CheckedPressedImage.TintColor=Ink;
+            return S;
+        }();
+        return Check;
+    }
+    // Small vector ornaments stay sharp at every window size.
+    class SPrintMark : public SLeafWidget
+    {
+    public:
+        SLATE_BEGIN_ARGS(SPrintMark) {} SLATE_ARGUMENT(FName, Mark) SLATE_ARGUMENT(FLinearColor, Tint) SLATE_END_ARGS()
+        void Construct(const FArguments& A){Mark=A._Mark;Tint=A._Tint;SetVisibility(EVisibility::HitTestInvisible);}
+        FVector2D ComputeDesiredSize(float) const override {return {32,32};}
+        int32 OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&,FSlateWindowElementList& D,int32 L,const FWidgetStyle&,bool) const override
+        {
+            const FVector2f Scale(G.GetLocalSize()/32.);
+            if (Scale.X <= 0 || Scale.Y <= 0) return L;
+            auto Lines=[&](TArray<FVector2f> P,float W=1.8f){for(auto& V:P)V*=Scale;
+                FSlateDrawElement::MakeLines(D,L,G.ToPaintGeometry(),P,ESlateDrawEffect::None,Tint,true,W);};
+            if(Mark=="Crest"){
+                TArray<FVector2f> Arch={{1,30},{1,16}};
+                for(int I=0;I<=32;++I){float A=PI*I/32.f;Arch.Add({16-15*FMath::Cos(A),16-15*FMath::Sin(A)});}
+                Arch.Append({{31,30},{1,30}}); Lines(Arch,1.5f);
+                Lines({{2,27},{9,19},{12,22},{19,16},{30,27}},1.5f);
+                Lines({{4,28},{10,24},{13,26},{20,21},{27,28}},1.f);
+                // Overhead sailplane: a tapered nose projects ahead of the main
+                // wing, and a separate tailplane sits at the end of the boom.
+                Lines({{19,4},{18.5f,9},{27,15},{18,11},{16,17},{18.5f,19},{15,18},{12,18},{15,16},{16.5f,10},{6,8},{17.5f,8.8f},{19,4}},1.5f);
+            }else if(Mark=="Fan"){
+                for(int I=0;I<=10;++I){const float A=PI*I/10.f;Lines({{16,29},{16+15*FMath::Cos(A),29-23*FMath::Sin(A)}},1.3f);}
+                Lines({{1,29},{31,29}});
+            }else if(Mark=="Compass"){
+                Lines({{16,1},{20,13},{30,16},{20,19},{16,31},{12,19},{2,16},{12,13},{16,1}});
+                Lines({{16,1},{16,31}},1); Lines({{2,16},{30,16}},1);
+            }else if(Mark=="Fly") Lines({{2,18},{14,14},{24,4},{21,13},{30,11},{31,13},{20,18},{15,28},{15,21},{8,24},{11,19},{2,18}});
+            else if(Mark=="Hangar"){Lines({{2,14},{16,5},{30,14},{28,14},{28,27},{4,27},{4,14},{2,14}});Lines({{9,26},{9,16},{23,16},{23,26}});}
+            else if(Mark=="OpenMap"){Lines({{2,8},{11,5},{21,9},{30,5},{30,25},{21,29},{11,25},{2,28},{2,8}});Lines({{11,5},{11,25}},1);Lines({{21,9},{21,29}},1);}
+            else if(Mark=="Weather"){Lines({{6,24},{3,22},{3,18},{6,15},{10,15},{12,10},{16,8},{20,9},{23,14},{27,15},{29,18},{28,22},{25,24},{6,24}});Lines({{4,28},{20,28}},1);}
+            else if(Mark=="Settings"){for(int I=0;I<3;++I){float Y=7+I*9,U=I==1?20:10;Lines({{3,Y},{29,Y}},1);Lines({{U,Y-3},{U,Y+3}},3);}}
+            else if(Mark=="Credits"){Lines({{3,6},{10,5},{16,8},{22,5},{29,6},{29,25},{22,24},{16,27},{10,24},{3,25},{3,6}});Lines({{16,8},{16,27}},1.3f);}
+            else {Lines({{16,2},{16,15}},2.5f);TArray<FVector2f> P;for(int I=0;I<=24;++I){float A=-.9f+4.95f*I/24;P.Add({16+11*FMath::Cos(A),17+11*FMath::Sin(A)});}Lines(P,2.2f);}
+            return L;
+        }
+    private:
+        FName Mark;
+        FLinearColor Tint;
+    };
     FString Dimensions(FIntPoint P) { return FString::Printf(TEXT("%d × %d"),P.X,P.Y); }
     const TCHAR* ModeNames[]={TEXT("Plein écran"),TEXT("Sans bordure"),TEXT("Fenêtré")};
     const TCHAR* QualityNames[]={TEXT("Faible"),TEXT("Moyenne"),TEXT("Élevée"),TEXT("Ultra"),TEXT("Cinéma")};
@@ -72,13 +149,32 @@ namespace
     {
     public:
         DECLARE_DELEGATE_OneParam(FSetOffset, int32);
-        SLATE_BEGIN_ARGS(SCgPlan) {} SLATE_ARGUMENT(int32, ModelIndex) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
+        SLATE_BEGIN_ARGS(SCgPlan) {} SLATE_ARGUMENT(int32, ModelIndex) SLATE_ARGUMENT(double, SpanCm) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
         void Construct(const FArguments& Args)
         {
             Offset = Args._OffsetMm;
             OnMove = Args._OnMove;
-            FullScale = 159.f / (Args._ModelIndex == 6 ? 2155.f : Args._ModelIndex == 5 ? 1490.f : Args._ModelIndex == 4 ? 9000.f : Args._ModelIndex == 3 ? 7000.f : Args._ModelIndex == 2 ? 2930.f : Args._ModelIndex == 1 ? 3600.f : 1190.f);
-            if (Args._ModelIndex == 6)
+            FullScale = 159.f / (Args._SpanCm * 10.);
+            if (Args._ModelIndex == 8)
+            {
+                // Project the Nubis planform around its 90 mm simulated CG.
+                Outline = {
+                    {{98,34.6f},{97,37},{96.4f,47},{96.3f,58},{97,65},{99,65},{99.7f,58},{99.6f,47},{99,37}},
+                    {{97,64},{97.7f,93.7f},{98.3f,93.7f},{99,64}},
+                    {{98,53.6f},{82,53.5f},{64.6f,53.6f},{49.9f,54.2f},{38.7f,55.1f},{31.2f,56.1f},{26.4f,57.2f},{21.6f,59.1f},{18.5f,61.5f},{18.5f,61.7f},{26.4f,59.5f},{38.7f,59},{64.6f,59.6f},{98,60.4f}},
+                    {{98,85.2f},{93.2f,85.2f},{88.9f,85.6f},{86.2f,86.4f},{84.6f,88.1f},{85,89},{88.9f,90.3f},{98,91.2f}}
+                };
+            }
+            else if (Args._ModelIndex == 7)
+            {
+                Outline = {
+                    {{98,18.3f},{96.4f,23},{95.6f,42},{96.1f,59},{98,69},{99.9f,59},{100.4f,42},{99.6f,23}},
+                    {{96.4f,60},{97.5f,135},{98.5f,135},{99.6f,60}},
+                    {{98,48.9f},{50,49.2f},{28,51},{18.5f,55.3f},{19,60},{35,63},{65,67.3f},{98,69.0f}},
+                    {{98,120.8f},{89,121.4f},{81,123.6f},{81,126},{98,128.8f}}
+                };
+            }
+            else if (Args._ModelIndex == 6)
             {
                 Outline = {{{98,40.2f},{88.8f,44.5f},{29,72.2f},{18.5f,80.6f},{19,84},{45,76},{79,65},{98,63.5f}},
                            {{98,40.2f},{107.2f,44.5f},{167,72.2f},{177.5f,80.6f},{177,84},{151,76},{117,65},{98,63.5f}}};
@@ -240,18 +336,29 @@ void SFlightMenu::Construct(const FArguments& Args)
     Plane=Args._Plane;
     for (int32 I=0;I<int32(EControlGroup::Count);++I) Groups.Add(MakeShared<FString>(GroupLabel(EControlGroup(I))));
     GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"),TEXT("ProjectVersion"),Version,GGameIni);
+    if (auto* Texture = FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("Slate/Alpine/I2-Manche-a-air.png")))
+        Windsock = FDeferredCleanupSlateBrush::CreateBrush(Texture);
+    if(auto* Texture=FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("Slate/Alpine/Wordmark.png")))
+    {
+        Masthead=FDeferredCleanupSlateBrush::CreateBrush(Texture);
+        Wordmark=*Masthead->GetSlateBrush();
+        Wordmark.SetUVRegion(FBox2f({.267f,.13f},{1.f,.86f}));
+    }
+    auto HomeOnly=[this]{return Page==EPage::Home?EVisibility::Visible:EVisibility::Collapsed;};
     TSharedRef<SVerticalBox> PanelContent=SNew(SVerticalBox);
-    PanelContent->AddSlot().AutoHeight().Padding(32,30,32,0)
+    PanelContent->AddSlot().AutoHeight()
     [
         SNew(SHorizontalBox)
         +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [SNew(SBox).WidthOverride(25).HeightOverride(3)[SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Gold)]]
-        +SHorizontalBox::Slot().AutoWidth().Padding(10,0)[Text(TEXT("CLUB DE VOL DE PENTE"),10,Gold,TEXT("Bold"))]
+        [SNew(SBox).WidthOverride(34).HeightOverride(23)[SNew(SPrintMark).Mark("Fan").Tint(Ink)]]
+        +SHorizontalBox::Slot().FillWidth(1).Padding(9,0).VAlign(VAlign_Center)[Text(TEXT("ÇA PLANE !    /    CLUB DE VOL DE PENTE"),10,Ink,TEXT("Bold"))]
+        +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [SNew(SBox).WidthOverride(21).HeightOverride(21)[SNew(SPrintMark).Mark("Compass").Tint(Ink)]]
     ];
-    PanelContent->AddSlot().FillHeight(1).Padding(32,16,32,16).VAlign(VAlign_Center)
+    PanelContent->AddSlot().AutoHeight().Padding(0,4,0,7)[Line(Ink)];
+    PanelContent->AddSlot().FillHeight(1)
     [ SNew(SScrollBox) + SScrollBox::Slot()[ SAssignNew(Body,SBox) ] ];
-    PanelContent->AddSlot().AutoHeight().Padding(32,0,32,23)
-    [ Text(TEXT("PROTOTYPE   /   v")+Version,10,Light,TEXT("Bold")) ];
+    PanelContent->AddSlot().AutoHeight().Padding(0,5,0,0)[Line(Ink)];
 
     ChildSlot
     [
@@ -261,51 +368,104 @@ void SFlightMenu::Construct(const FArguments& Args)
         })
         [
             SNew(SOverlay)
-            +SOverlay::Slot().HAlign(HAlign_Left)
-            [ SNew(SBox).WidthOverride_Lambda([this]{return FOptionalSize(Page==EPage::Devices?680.f:390.f);})[SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Panel).Padding(0)[PanelContent]] ]
+            +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(24,20,0,34)
+            [ SNew(SBox).Visibility_Lambda([this]{return Page==EPage::Home?EVisibility::Collapsed:EVisibility::Visible;})
+              .WidthOverride_Lambda([this]{return FOptionalSize(Page==EPage::Map?790.f:Page==EPage::Devices?680.f:398.f);})
+              [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Gold).Padding(2)
+               [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Paper).Padding(FMargin(13,9))[PanelContent]]] ]
+            +SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(24,16)
+            [SNew(SBorder).Visibility_Lambda(HomeOnly).BorderImage(Fill()).BorderBackgroundColor(FLinearColor(.006f,.067f,.070f,.93f)).Padding(FMargin(15,8))
+             [SNew(SVerticalBox)
+              +SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
+                +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SBox).WidthOverride(79).HeightOverride(79)
+                    [SNew(SImage).Image(Windsock ? Windsock->GetSlateBrush() : nullptr)]]
+                +SHorizontalBox::Slot().AutoWidth().Padding(9,0,0,0)[SNew(SBox).WidthOverride(325).HeightOverride(106)[SNew(SImage).Image(&Wordmark)]]]
+              +SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[Text(TEXT("S I M U L A T E U R    D E    V O L    D E    P E N T E    R C"),9,Gold,TEXT("Bold"))]]]
+            +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(24,12,0,22)
+            [SNew(SBox).Visibility_Lambda(HomeOnly).WidthOverride(245)
+             [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Gold).Padding(2)
+              [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Paper).Padding(FMargin(9,7))
+               [SNew(SVerticalBox)
+                +SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(SBox).WidthOverride(53).HeightOverride(30)[SNew(SPrintMark).Mark("Fan").Tint(Ink)]]
+                +SVerticalBox::Slot().AutoHeight().Padding(0,5)[Line(Ink)]
+                +SVerticalBox::Slot().AutoHeight()[SAssignNew(TicketBody,SBox)]
+                +SVerticalBox::Slot().AutoHeight().Padding(0,6)[Line(Ink)]
+                +SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(SBox).WidthOverride(32).HeightOverride(32)[SNew(SPrintMark).Mark("Compass").Tint(Ink)]]]]]]
+            +SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(0,0,24,76)
+            [SNew(SBox).Visibility_Lambda(HomeOnly).WidthOverride(342)
+             [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Gold).Padding(2)
+              [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Panel).Padding(FMargin(12,7))
+               [SNew(SVerticalBox)
+                +SVerticalBox::Slot().AutoHeight()[Choice(TEXT("SITE DE VOL"),[this]{
+                    const TCHAR* Names[]={TEXT("01  ·  Prairie du lac"),TEXT("02  ·  Chalet du versant"),TEXT("03  ·  Piste des Alpages")};
+                    return FString(Names[Plane->LaunchSiteNumber()-1]);
+                },[this](int32 Step){Plane->SwitchLaunchSite(Step);})]
+                +SVerticalBox::Slot().AutoHeight().Padding(0,5)[Line(Gold)]
+                +SVerticalBox::Slot().AutoHeight()[Live([this]{return FString(TEXT("MODÈLE    /    "))+Plane->ModelName();},12,Paper)]
+                +SVerticalBox::Slot().AutoHeight().Padding(0,4,0,0)[Button(TEXT("Explore"),TEXT("Explorer le site"),[this]{Plane->ExploreScene();})]]]]]
+            +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(24,0,0,9)
+            [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(FMargin(8,2))[Text(TEXT("ÇA PLANE !    /    v")+Version,10,Paper,TEXT("Bold"))]]
             +SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(0,0,28,25)
             [
                 SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(FLinearColor(.008f,.02f,.023f,.81f)).Padding(FMargin(15,9))
                 [ SNew(SVerticalBox)
                   +SVerticalBox::Slot().AutoHeight()[Live([this]{return FString::Printf(TEXT("SITE  %02d     /     VALLÉE ALPINE"),Plane->LaunchSiteNumber());},9,Gold)]
-                  +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[Live([this]{return FString(Plane->LaunchSiteNumber()==2 ? TEXT("Le chalet du versant") : TEXT("La prairie du lac"));},15,Paper)] ]
+                  +SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)[Live([this]{const FVector2D P=Plane->MapPositionXY();return FString::Printf(TEXT("X %+.0f m    Y %+.0f m"),P.X,P.Y);},14,Paper)] ]
             ]
         ]
     ];
     Build();
+    Plane->ShowMenuPresentation(false,true);
+    if (Args._ShowStartupPoster)
+    {
+        if (auto* Texture = FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("Slate/Alpine/C1-Prairie-du-lac.png")))
+        {
+            StartupPoster = FDeferredCleanupSlateBrush::CreateBrush(Texture);
+            HomeAfterStartup = ChildSlot.DetachWidget();
+            ChildSlot
+            [
+                SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(0)
+                [SNew(SScaleBox).Stretch(EStretch::ScaleToFit)
+                 [SNew(SImage).Image(StartupPoster->GetSlateBrush())]]
+            ];
+        }
+    }
 }
 
 void SFlightMenu::FocusFirst()
 {
-    if (First.IsValid()) FSlateApplication::Get().SetKeyboardFocus(First,EFocusCause::SetDirectly);
+    if (!HomeAfterStartup && First.IsValid()) FSlateApplication::Get().SetKeyboardFocus(First,EFocusCause::SetDirectly);
 }
 
 TSharedRef<SButton> SFlightMenu::Button(const FString& Name,const FString& Label,TFunction<void()> Click,bool Primary)
 {
-    TSharedRef<SButton> B=SNew(SButton).Tag(FName(*Name)).ButtonStyle(&Style(Primary)).ContentPadding(FMargin(14,9))
+    const bool OnDark=Page==EPage::Home;
+    const FLinearColor Color=OnDark || Primary ? Paper : Ink;
+    TSharedRef<SButton> B=SNew(SButton).Tag(FName(*Name)).ButtonStyle(&Style(Primary,OnDark)).ContentPadding(FMargin(12,7))
         .OnClicked_Lambda([Click]{Click();return FReply::Handled();})
         [ SNew(SHorizontalBox)
-          +SHorizontalBox::Slot().FillWidth(1)[Text(Label,Primary?16:13,Primary?Ink:Paper,TEXT("Bold"))]
-          +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[Text(Primary?TEXT("→"):TEXT("›"),14,Primary?Ink:Light)] ];
+          +SHorizontalBox::Slot().FillWidth(1)[Text(Label,Primary?16:13,Color,TEXT("BoldItalic"))]
+          +SHorizontalBox::Slot().AutoWidth().Padding(6,0,0,0).VAlign(VAlign_Center)[Text(Primary?TEXT("→"):TEXT("›"),14,Color)] ];
     if (!First.IsValid()) First=B;
     return B;
 }
 
 TSharedRef<SWidget> SFlightMenu::Choice(const FString& Name,TFunction<FString()> Value,TFunction<void(int32)> Change,TAttribute<bool> Enabled)
 {
-    auto Arrow=[this,Change,Name,Enabled](const TCHAR* Label,int32 Step)
+    const bool OnDark=Page==EPage::Home;
+    auto Arrow=[this,Change,Name,Enabled,OnDark](const TCHAR* Label,int32 Step)
     {
-        TSharedRef<SButton> B=SNew(SButton).Tag(FName(*(Name+(Step>0?TEXT("+"):TEXT("-"))))).ButtonStyle(&Style(false)).ContentPadding(FMargin(10,4))
-              .OnClicked_Lambda([Change,Step]{Change(Step);return FReply::Handled();})[Text(Label,15,Gold,TEXT("Bold"))];
+        TSharedRef<SButton> B=SNew(SButton).Tag(FName(*(Name+(Step>0?TEXT("+"):TEXT("-"))))).ButtonStyle(&Style(false,OnDark)).ContentPadding(FMargin(10,4))
+              .OnClicked_Lambda([Change,Step]{Change(Step);return FReply::Handled();})[Text(Label,15,OnDark?Gold:Ink,TEXT("Bold"))];
         if (!First.IsValid() && Enabled.Get()) First=B;
         return B;
     };
     return SNew(SVerticalBox)
-        +SVerticalBox::Slot().AutoHeight().Padding(0,0,0,3)[Text(Name,10,Light,TEXT("Bold"))]
+        +SVerticalBox::Slot().AutoHeight().Padding(0,0,0,3)[Text(Name,10,OnDark?Light:MutedInk,TEXT("Bold"))]
         +SVerticalBox::Slot().AutoHeight()
         [SNew(SHorizontalBox).IsEnabled(Enabled)
          +SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT("‹"),-1)]
-         +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).HAlign(HAlign_Center)[Live(Value,13)]
+         +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).HAlign(HAlign_Center)[Live(Value,13,OnDark?Paper:Ink)]
          +SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT("›"),1)]];
 }
 
@@ -323,7 +483,7 @@ void SFlightMenu::Go(EPage Target)
         DraftMotor = Plane->MotorSettings();
         bAdvancedModel = false;
     }
-    Plane->ShowHangarModel(Page==EPage::Hangar);
+    Plane->ShowMenuPresentation(Page==EPage::Hangar,Page==EPage::Home);
     Message.Empty();
     if (Page==EPage::Devices) Plane->Radio.Scan();
     if (Page==EPage::Weather) DraftWeather=ValleyAir::Settings();
@@ -350,54 +510,70 @@ void SFlightMenu::Build()
     if (Page==EPage::Home) Home(*List);
     else
     {
-        Add(*List,Text(TEXT("ÇA PLANE !     /     CLUB RC"),10,Gold,TEXT("Bold")),6);
-        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : TEXT("Graphismes");
-        Add(*List,Text(Title,29,Paper,TEXT("Bold")),12);
+        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : TEXT("Graphismes");
+        Add(*List,Text(Title,27,Ink,TEXT("BoldItalic")),4);
+        Add(*List,Line(Ink),10);
         if (Page==EPage::Hangar) Hangar(*List);
         if (Page==EPage::Devices) Devices(*List);
         if (Page==EPage::Graphics) Graphics(*List);
         if (Page==EPage::Weather) Weather(*List);
-        if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),TEXT("Retour au menu"),[this]{Go(EPage::Home);}));
+        if (Page==EPage::Vario) Vario(*List);
+        if (Page==EPage::Map) Map(*List);
+        if (Page==EPage::Credits)
+        {
+            Add(*List,SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(FMargin(15,15))
+                [SNew(SHorizontalBox)
+                 +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [SNew(SBox).WidthOverride(45).HeightOverride(48)[SNew(SPrintMark).Mark("Crest").Tint(Gold)]]
+                 +SHorizontalBox::Slot().FillWidth(1).Padding(14,0,0,0).VAlign(VAlign_Center)
+                    [SNew(SVerticalBox)
+                     +SVerticalBox::Slot().AutoHeight()[Text(TEXT("CONCEPTION DU SIMULATEUR"),10,Gold,TEXT("Bold"))]
+                     +SVerticalBox::Slot().AutoHeight()[Text(TEXT("Freyr86"),24,Paper,TEXT("BoldItalic"))]]],15);
+            Add(*List,Text(TEXT("Remerciements"),16,Ink,TEXT("BoldItalic")),5);
+            Add(*List,Text(TEXT("Merci de faire voler Ça plane !"),13,MutedInk),15);
+        }
+        if (Page==EPage::Settings)
+        {
+            Add(*List,Button(TEXT("Devices"),TEXT("Radio et périphériques"),[this]{Go(EPage::Devices);}),6);
+            Add(*List,Button(TEXT("Graphics"),TEXT("Graphismes et affichage"),[this]{Go(EPage::Graphics);}),6);
+            Add(*List,Button(TEXT("Vario"),TEXT("Vario sonore"),[this]{Go(EPage::Vario);}),12);
+        }
+        if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),Page==EPage::Map && bMapFromFlight?TEXT("Reprendre la session"):TEXT("Retour au menu"),[this]{if(Page==EPage::Map) CloseMap(); else Go(EPage::Home);}));
     }
-    Body->SetContent(List);
+    if(Page==EPage::Home) {Body->SetContent(SNullWidget::NullWidget);TicketBody->SetContent(List);}
+    else {TicketBody->SetContent(SNullWidget::NullWidget);Body->SetContent(List);}
 }
 
 void SFlightMenu::Home(SVerticalBox& List)
 {
-    Add(List,Text(TEXT("Ça plane !"),47,Paper,TEXT("BoldItalic")),2);
-    Add(List,Text(TEXT("Simulateur de planeur radiocommandé"),13,Light),24);
-    Add(List,Line(),14);
-    Add(List,Text(TEXT("PLANEUR SÉLECTIONNÉ"),9,Gold,TEXT("Bold")),2);
-    Add(List,Text(Plane->ModelName(),19,Paper,TEXT("Bold")),2);
-    if (Plane->IsFlightReady())
+    auto Row=[this,&List](FName RowTag,const TCHAR* Name,TFunction<void()> Action,bool Primary=false)
     {
-        const auto Setting = Plane->Loading();
-        Add(List,Text(FString::Printf(TEXT("%d g   ·   Centrage %d mm"), Setting.MassGrams, Setting.CgMm),12,Light),4);
-    }
-    Add(List,Live([this]{
-        if (!Plane->IsFlightReady()) return FString(TEXT("Fiche de vol introuvable ou invalide"));
-        return FString(Plane->IsAppearanceReady()?TEXT("Prêt à voler"):TEXT("Chargement du planeur…"));
-    },11,Light),12);
-    auto FlyButton=Button(TEXT("Fly"),Plane->IsNoclip()?TEXT("Reprendre l’exploration"):(Plane->HasStartedFlight()?TEXT("Reprendre le vol"):TEXT("Prendre l’air")),[this]{Plane->Fly();},true);
-    FlyButton->SetEnabled(TAttribute<bool>::CreateLambda([this]{ return Plane->IsFlightReady() && Plane->IsAppearanceReady(); }));
-    Add(List,FlyButton,11);
-    Add(List,Choice(TEXT("SITE DE VOL"),[this]{return FString(Plane->LaunchSiteNumber()==2 ? TEXT("02 · Chalet du versant") : TEXT("01 · Prairie du lac"));},
-        [this](int32){Plane->SwitchLaunchSite(); Build();}),4);
-    auto ExploreButton=Button(TEXT("Explore"),TEXT("Explorer la scène · noclip"),[this]{Plane->ExploreScene();});
-    ExploreButton->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
-    Add(List,ExploreButton,4);
-    Add(List,Button(TEXT("Hangar"),TEXT("Choisir le planeur"),[this]{Go(EPage::Hangar);}),4);
-    Add(List,Button(TEXT("Weather"),TEXT("Météo et ascendances"),[this]{Go(EPage::Weather);}),4);
-    Add(List,Button(TEXT("Devices"),TEXT("Périphériques"),[this]{Go(EPage::Devices);}),4);
-    Add(List,Button(TEXT("Graphics"),TEXT("Graphismes"),[this]{Go(EPage::Graphics);}),4);
-    Add(List,Button(TEXT("Quit"),TEXT("Quitter"),[this]{
-        if (auto* PC=Cast<APlayerController>(Plane->GetController())) UKismetSystemLibrary::QuitGame(Plane.Get(),PC,EQuitPreference::Quit,false);
-    }));
+        static const FButtonStyle Ticket=FButtonStyle().SetNormal(FSlateColorBrush(Paper)).SetHovered(FSlateColorBrush(Gold)).SetPressed(FSlateColorBrush(FLinearColor(.88f,.63f,.32f)));
+        const FLinearColor Color=Primary?Paper:Ink;
+        TSharedRef<SButton> B=SNew(SButton).Tag(RowTag).ButtonStyle(Primary?&Style(true):&Ticket).ContentPadding(FMargin(8,9))
+            .OnClicked_Lambda([Action]{Action();return FReply::Handled();})
+            [SNew(SHorizontalBox)
+             +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SBox).WidthOverride(27).HeightOverride(27)[SNew(SPrintMark).Mark(RowTag).Tint(Color)]]
+             +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(12,0,0,0)[Text(Name,18,Color,TEXT("BoldItalic"))]];
+        if(Primary)
+        {
+            B->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
+            First=B;
+        }
+        Add(List,B,1);
+        Add(List,Line(Ink),1);
+    };
+    Row("Fly",Plane->IsNoclip()?TEXT("REPRENDRE"):Plane->HasStartedFlight()?TEXT("REPRENDRE LE VOL"):TEXT("PRENDRE L’AIR"),[this]{Plane->Fly();},true);
+    Row("Hangar",TEXT("HANGAR"),[this]{Go(EPage::Hangar);});
+    Row("OpenMap",TEXT("CARTE"),[this]{Go(EPage::Map);});
+    Row("Weather",TEXT("MÉTÉO"),[this]{Go(EPage::Weather);});
+    Row("Settings",TEXT("RÉGLAGES"),[this]{Go(EPage::Settings);});
+    Row("Credits",TEXT("CRÉDITS"),[this]{Go(EPage::Credits);});
+    Row("Quit",TEXT("QUITTER"),[this]{if(auto* PC=Cast<APlayerController>(Plane->GetController())) UKismetSystemLibrary::QuitGame(Plane.Get(),PC,EQuitPreference::Quit,false);});
 }
 
 void SFlightMenu::Hangar(SVerticalBox& List)
 {
-    Add(List,Line(),10);
     Add(List,Choice(TEXT("MODÈLE"),[this]{ return FString(Plane->ModelName()); },[this](int32 Step){
         Plane->BrowseModel(Step);
         DraftLoading = Plane->Loading();
@@ -410,16 +586,11 @@ void SFlightMenu::Hangar(SVerticalBox& List)
     }),6);
     Add(List,Live([this]{
         if (!Plane->IsAppearanceReady()) return FString(TEXT("Chargement du planeur…"));
-        const FString Ordinal = Plane->ModelNumber() + TEXT("   ·   ");
-        if (Plane->ModelIndex()==6) return Ordinal + TEXT("2,155 m   ·   Aile volante à élevons");
-        if (Plane->ModelIndex()==5) return Ordinal + TEXT("1,49 m   ·   F3K · lancer disque");
-        if (Plane->ModelIndex()==4) return Ordinal + TEXT("9,00 m   ·   Vol de distance");
-        if (Plane->ModelIndex()==3) return Ordinal + TEXT("7,00 m   ·   Voltige · lancer assisté");
-        if (Plane->ModelIndex()==2) return Ordinal + TEXT("2,93 m   ·   F3F   ·   vol expérimental");
-        return Ordinal + (Plane->ModelIndex() == 0 ? TEXT("1,19 m   ·   2 axes") :
-            TEXT("3,60 × 1,77 m   ·   79,1 dm²"));
-    },12,Light),12);
-    if (!Plane->CanSelectModel()) { Add(List,Text(TEXT("Modèle indisponible"),12,Gold)); return; }
+        return Plane->HangarSummary();
+    },12,MutedInk),12);
+    if (!Plane->CanSelectModel()) { Add(List,Text(TEXT("Modèle indisponible"),12,Rust)); return; }
+    Add(List,Choice(TEXT("ZOOM DU PLANEUR"),[this]{return FString::Printf(TEXT("× %.2f"),Plane->HangarZoom);},
+        [this](int32 Step){Plane->HangarZoom=FMath::Clamp(Plane->HangarZoom+Step*.25f,.5f,5.f);}),8);
     Add(List,SNew(SHorizontalBox)
         +SHorizontalBox::Slot().FillWidth(1).Padding(0,0,4,0)
         [Button(TEXT("TabSetup"),TEXT("Réglages"),[this]{bAdvancedModel=false;Build();FocusFirst();},!bAdvancedModel)]
@@ -427,7 +598,7 @@ void SFlightMenu::Hangar(SVerticalBox& List)
         [Button(TEXT("TabAdvanced"),TEXT("Avancé"),[this]{bAdvancedModel=true;Build();FocusFirst();},bAdvancedModel)],12);
     if (bAdvancedModel) AdvancedModel(List);
     else ModelSetup(List);
-    if (Plane->HasStartedFlight()) Add(List,Text(TEXT("Modifier puis appliquer prépare un nouveau départ."),11,Gold),5);
+    if (Plane->HasStartedFlight()) Add(List,Text(TEXT("Modifier puis appliquer prépare un nouveau départ."),11,Rust),5);
     Add(List,Button(TEXT("SelectAircraft"),TEXT("Appliquer et sélectionner"),[this]{
         Plane->ApplyModelSettings(DraftLoading,bDraftAileronSteering,DraftGains,DraftFlaps,DraftMotor); Go(EPage::Home);
     },true),5);
@@ -436,56 +607,63 @@ void SFlightMenu::Hangar(SVerticalBox& List)
 void SFlightMenu::ModelSetup(SVerticalBox& List)
 {
     Add(List,Choice(TEXT("MANCHE POUR LES VIRAGES"),[this]{
-        if (Plane->ModelIndex()==6) return FString(bDraftAileronSteering ? TEXT("Direction → roulis") : TEXT("Ailerons → roulis"));
+        if (!Plane->HasRudder()) return FString(bDraftAileronSteering ? TEXT("Manche de direction → roulis") : TEXT("Manche d’ailerons → roulis"));
         return FString(bDraftAileronSteering ? TEXT("Ailerons → direction") : TEXT("Direction → direction"));
     },[this](int32){ bDraftAileronSteering = !bDraftAileronSteering; }),4);
-    Add(List,Text(Plane->ModelIndex()==6 ? TEXT("Élevons · profondeur et roulis combinés") : Plane->ModelIndex()==0 ? TEXT("Topy · mixage en V avec la profondeur") :
-        Plane->ModelIndex()>=2 ? TEXT("L’autre manche commande les ailerons") : TEXT("Commande de la dérive du K3600"),11,Light),8);
+    Add(List,Text(Plane->ModelIndex()==7 ? TEXT("Ailerons et profondeur intégrale · dérive fixe") : Plane->ModelIndex()==6 ? TEXT("Élevons · profondeur et roulis combinés") : Plane->ModelIndex()==0 ? TEXT("Topy · mixage en V avec la profondeur") :
+        Plane->ModelIndex()>=2 ? TEXT("L’autre manche commande les ailerons") : TEXT("Commande de la dérive du K3600"),11,MutedInk),8);
     Add(List,Choice(TEXT("MASSE TOTALE"),[this]{ return FString::Printf(TEXT("%d g"), DraftLoading.MassGrams); },
-        [this](int32 Step){ DraftLoading.MassGrams += (Plane->ModelIndex()==6 ? 5 : Plane->ModelIndex()==5 ? 1 : Plane->ModelIndex()>=3 ? 100 : 5) * Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),6);
+        [this](int32 Step){
+            const int32 I = Plane->ModelIndex();
+            const int32 MassStep = I == 5 ? 1 : (I == 3 || I == 4 || I == 8) ? 100 : 5;
+            DraftLoading.MassGrams += Step * MassStep;
+            DraftLoading = Plane->LimitLoading(DraftLoading);
+        }),6);
     Add(List,Choice(TEXT("CENTRAGE LONGITUDINAL"),[this]{ return FString::Printf(TEXT("%d mm"), DraftLoading.CgMm); },
         [this](int32 Step){ DraftLoading.CgMm += Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),4);
     Add(List,SNew(SHorizontalBox)
-        +SHorizontalBox::Slot().FillWidth(.62f)[Text(TEXT("VUE DE DESSUS   ↑ NEZ"),10,Light)]
-        +SHorizontalBox::Slot().FillWidth(.38f)[Text(TEXT("ZOOM CENTRAGE"),10,Light)],2);
-    Add(List,SNew(SCgPlan).Tag(TEXT("CgPlan")).ModelIndex(Plane->ModelIndex())
+        +SHorizontalBox::Slot().FillWidth(.62f)[Text(TEXT("VUE DE DESSUS   ↑ NEZ"),10,MutedInk)]
+        +SHorizontalBox::Slot().FillWidth(.38f)[Text(TEXT("ZOOM CENTRAGE"),10,MutedInk)],2);
+    Add(List,SNew(SCgPlan).Tag(TEXT("CgPlan")).ModelIndex(Plane->ModelIndex()).SpanCm(Plane->ModelSpanCm())
         .OffsetMm_Lambda([this]{ return DraftLoading.CgMm-Plane->StandardLoading().CgMm; })
         .OnMove_Lambda([this](int32 Delta){ DraftLoading.CgMm=Plane->StandardLoading().CgMm+Delta; }),3);
     Add(List,Live([this]{
         const int32 Origin = Plane->StandardLoading().CgMm, Delta = DraftLoading.CgMm - Origin;
         const FString Shift = Delta ? FString::Printf(TEXT("%d mm vers %s"), FMath::Abs(Delta), Delta < 0 ? TEXT("le nez") : TEXT("la queue")) : TEXT("sur le repère d’origine");
         return FString::Printf(TEXT("Origine  %d mm   ·   %s"), Origin, *Shift);
-    },12,Gold),4);
-    Add(List,Text(TEXT("Glisser le point doré · cercle blanc d’origine."),11,Light),6);
-    if (Plane->ModelIndex()==6) Add(List,Text(TEXT("Notice LongBow Mk2 · 214 mm depuis le nez"),11,Light),4);
-    if (Plane->ModelIndex()==1) Add(List,Text(TEXT("Notice K3600  ·  101–106 mm du bord d’attaque"),11,Light),4);
+    },12,Rust),4);
+    Add(List,Text(TEXT("Glisser le point doré · cercle blanc d’origine."),11,MutedInk),6);
+    if (Plane->ModelIndex()==8) Add(List,Text(TEXT("Centrage estimé depuis le bord d’attaque à l’emplanture."),11,MutedInk),4);
+    if (Plane->ModelIndex()==7) Add(List,Text(TEXT("Notice FEMO · 60–70 mm du bord d’attaque à l’emplanture"),11,MutedInk),4);
+    if (Plane->ModelIndex()==6) Add(List,Text(TEXT("Notice LongBow Mk2 · 214 mm depuis le nez"),11,MutedInk),4);
+    if (Plane->ModelIndex()==1) Add(List,Text(TEXT("Notice K3600  ·  101–106 mm du bord d’attaque"),11,MutedInk),4);
     Add(List,Button(TEXT("DefaultCg"),TEXT("Rétablir le centrage d’origine"),[this]{ DraftLoading.CgMm = Plane->StandardLoading().CgMm; }),4);
 }
 
 void SFlightMenu::AdvancedModel(SVerticalBox& List)
 {
-    Add(List,Text(TEXT("MOTORISATION"),12,Gold,TEXT("Bold")),5);
-    Add(List,SNew(SCheckBox).Tag(TEXT("MotorEnabled"))
+    Add(List,Text(TEXT("MOTORISATION"),12,Rust,TEXT("Bold")),5);
+    Add(List,SNew(SCheckBox).Style(&CheckStyle()).Tag(TEXT("MotorEnabled"))
         .IsChecked_Lambda([this]{return DraftMotor.Enabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;})
         .OnCheckStateChanged_Lambda([this](ECheckBoxState State){DraftMotor.Enabled = State == ECheckBoxState::Checked;})
-        [Text(TEXT("Activer le moteur"),12,Paper)],6);
+        [Text(TEXT("Activer le moteur"),12,Ink)],6);
     Add(List,SNew(SHorizontalBox)
-        +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(TEXT("Puissance maximale (W)"),12,Paper)]
-        +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).Tag(TEXT("MotorMaxWatts"))
+        +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(TEXT("Puissance maximale (W)"),12,Ink)]
+        +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).Style(&NumberFieldStyle()).Tag(TEXT("MotorMaxWatts"))
             .IsEnabled_Lambda([this]{return DraftMotor.Enabled;})
             .MinDesiredWidth(76).MinValue(1).MaxValue(FGliderMotor::MaxWatts).Delta(1)
             .Value_Lambda([this]{return DraftMotor.Watts;})
             .OnValueChanged_Lambda([this](int32 Watts){DraftMotor.Watts=Watts;})],5);
-    Add(List,Text(TEXT("Gaz et coupure moteur à attribuer dans Périphériques."),11,Light),12);
+    Add(List,Text(TEXT("Gaz et coupure moteur à attribuer dans Périphériques."),11,MutedInk),12);
     if (Plane->IsControlInUse(EGliderControl::Flaps))
     {
-        Add(List,Text(TEXT("DÉBATTEMENT DES VOLETS"),12,Gold,TEXT("Bold")),5);
-        Add(List,Text(TEXT("0 % : haut     ·     50 % : neutre     ·     100 % : bas"),11,Light),8);
+        Add(List,Text(TEXT("DÉBATTEMENT DES VOLETS"),12,Rust,TEXT("Bold")),5);
+        Add(List,Text(TEXT("0 % : haut     ·     50 % : neutre     ·     100 % : bas"),11,MutedInk),8);
         auto Angle = [this,&List](const TCHAR* Label, int32 FFlapTravel::*Field)
         {
             Add(List,SNew(SHorizontalBox)
-                +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(Label,12,Paper)]
-                +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).MinDesiredWidth(76)
+                +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Text(Label,12,Ink)]
+                +SHorizontalBox::Slot().AutoWidth()[SNew(SSpinBox<int32>).Style(&NumberFieldStyle()).MinDesiredWidth(76)
                     .MinValue(0).MaxValue(90).Delta(1)
                     .Value_Lambda([this,Field]{return DraftFlaps.*Field;})
                     .OnValueChanged_Lambda([this,Field](int32 Value){DraftFlaps.*Field=FMath::Clamp(Value,0,90);})],5);
@@ -494,30 +672,30 @@ void SFlightMenu::AdvancedModel(SVerticalBox& List)
         Angle(TEXT("Vers le bas (°)"),&FFlapTravel::Down);
         Add(List,Button(TEXT("DefaultFlapTravel"),TEXT("Rétablir les débattements du modèle"),[this]{DraftFlaps=Plane->DefaultFlapTravel();}),12);
     }
-    Add(List,Text(TEXT("FORCE DES COMMANDES"),12,Gold,TEXT("Bold")),5);
-    Add(List,Text(TEXT("100 % référence · 0 % nul · négatif inversé"),11,Light),14);
+    Add(List,Text(TEXT("FORCE DES COMMANDES"),12,Rust,TEXT("Bold")),5);
+    Add(List,Text(TEXT("100 % référence · 0 % nul · négatif inversé"),11,MutedInk),14);
     auto Gain = [&](FName ControlTag,const TCHAR* Label,TFunction<int32()> Read,TFunction<void(int32)> Write)
     {
-        Add(List,Text(Label,11,Paper),5);
+        Add(List,Text(Label,11,Ink),5);
         Add(List,SNew(SHorizontalBox)
             +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(0,0,12,0)
             [SNew(SSlider).MinValue(-500.f).MaxValue(500.f).StepSize(5.f).MouseUsesStep(true)
                 .Value_Lambda([Read]{return float(Read());})
                 .OnValueChanged_Lambda([Write](float Value){Write(FMath::Clamp(FMath::RoundToInt32(Value),-500,500));})
-                .SliderHandleColor(Gold)]
+                .SliderBarColor(Ink).SliderHandleColor(Coral)]
             +SHorizontalBox::Slot().AutoWidth()
-            [SNew(SSpinBox<int32>).Tag(ControlTag).MinDesiredWidth(76).MinValue(-500).MaxValue(500)
+            [SNew(SSpinBox<int32>).Style(&NumberFieldStyle()).Tag(ControlTag).MinDesiredWidth(76).MinValue(-500).MaxValue(500)
                 .MinSliderValue(-500).MaxSliderValue(500).Delta(1)
                 .Value_Lambda([Read]{return Read();})
                 .OnValueChanged_Lambda([Write](int32 Value){Write(FMath::Clamp(Value,-500,500));})]
-            +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5,0,0,0)[Text(TEXT("%"),12,Light)],15);
+            +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5,0,0,0)[Text(TEXT("%"),12,MutedInk)],15);
     };
     const bool Elevons = Plane->ModelIndex()==6;
-    if (!Elevons) Gain(TEXT("GainYaw"),TEXT("Direction / lacet"),[this]{return DraftGains.Yaw;},[this](int32 Value){DraftGains.Yaw=Value;});
-    Gain(TEXT("GainRoll"),Elevons ? TEXT("Roulis par élevons") : TEXT("Roulis induit"),[this]{return DraftGains.Roll;},[this](int32 Value){DraftGains.Roll=Value;});
+    if (Plane->HasRudder()) Gain(TEXT("GainYaw"),TEXT("Direction / lacet"),[this]{return DraftGains.Yaw;},[this](int32 Value){DraftGains.Yaw=Value;});
+    Gain(TEXT("GainRoll"),Elevons ? TEXT("Roulis par élevons") : Plane->ModelIndex()>=7 ? TEXT("Roulis par ailerons") : TEXT("Roulis induit"),[this]{return DraftGains.Roll;},[this](int32 Value){DraftGains.Roll=Value;});
     Gain(TEXT("GainPitch"),TEXT("Profondeur"),[this]{return DraftGains.Pitch;},[this](int32 Value){DraftGains.Pitch=Value;});
-    auto Note=Text(Elevons ? TEXT("Les deux élevons travaillent ensemble en profondeur et en sens opposés en roulis.")
-        : TEXT("Sur ces modèles 2 axes, le manche de virage agit sur la direction et le roulis. Glisser les curseurs ou saisir un pourcentage."),11,Light);
+    auto Note=Text(Plane->ModelIndex()==8 ? TEXT("Les ailerons commandent le roulis. La direction permet de coordonner le virage.") : Plane->ModelIndex()==7 ? TEXT("Le stabilisateur pendulaire commande la profondeur.") : Elevons ? TEXT("Les deux élevons travaillent ensemble en profondeur et en sens opposés en roulis.")
+        : TEXT("Sur ces modèles 2 axes, le manche de virage agit sur la direction et le roulis. Glisser les curseurs ou saisir un pourcentage."),11,MutedInk);
     Note->SetAutoWrapText(true);
     Add(List,Note,12);
     Add(List,Button(TEXT("DefaultGains"),TEXT("Rétablir les forces à 100 %"),[this]{DraftGains={};}),12);
@@ -535,12 +713,14 @@ void SFlightMenu::Devices(SVerticalBox& List)
         [Choice(TEXT("PÉRIPHÉRIQUE"),[&R]{return R.SourceLabel();},[&R](int32 S){R.CycleDevice(S);})]
         +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom)
         [Button(TEXT("Refresh"),TEXT("Rechercher"),[&R]{R.Scan();R.Notice=TEXT("Recherche terminée.");})],4);
-    Add(List,Live([&R]{return R.Status();},11,Gold),12);
+    Add(List,Live([&R]{return R.Status();},11,Rust),12);
 
     auto Select=[this,&R](A Next){R.CancelLearn();Control=Next;Build();};
     auto Left=SNew(SVerticalBox);
-    Add(*Left,Text(TEXT("FAMILLE"),10,Light,TEXT("Bold")),4);
-    Add(*Left,SNew(STextComboBox).OptionsSource(&Groups).InitiallySelectedItem(Groups[int32(Group)])
+    Add(*Left,Text(TEXT("FAMILLE"),10,MutedInk,TEXT("Bold")),4);
+    Add(*Left,SNew(STextComboBox).ButtonStyle(&Style(false)).ColorAndOpacity(Ink)
+        .Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"),12)).ContentPadding(FMargin(9,5))
+        .OptionsSource(&Groups).InitiallySelectedItem(Groups[int32(Group)])
         .OnSelectionChanged_Lambda([this,Select](TSharedPtr<FString> Item,ESelectInfo::Type){
             const int32 Index=Groups.IndexOfByKey(Item);
             if (Index<0 || Index==int32(Group)) return;
@@ -555,8 +735,8 @@ void SFlightMenu::Devices(SVerticalBox& List)
     }
 
     auto Right=SNew(SVerticalBox);
-    Add(*Right,Text(Plane->IsControlInUse(Control)?TEXT("EN SERVICE SUR CE PLANEUR"):TEXT("NON UTILISÉ SUR CE PLANEUR"),9,Gold,TEXT("Bold")),3);
-    Add(*Right,Text(Spec.Label,17,Paper,TEXT("Bold")),6);
+    Add(*Right,Text(Plane->IsControlInUse(Control)?TEXT("EN SERVICE SUR CE PLANEUR"):TEXT("NON UTILISÉ SUR CE PLANEUR"),9,Rust,TEXT("Bold")),3);
+    Add(*Right,Text(Spec.Label,17,Ink,TEXT("Bold")),6);
     auto Slot=[this,&R,Available,Right](bool Minus)
     {
         const auto Tag=Minus?TEXT("BindMinus"):TEXT("BindPlus");
@@ -568,12 +748,12 @@ void SFlightMenu::Devices(SVerticalBox& List)
         Assign->SetEnabled(Available);
         auto Clear=SNew(SButton).ButtonStyle(&Style(false)).ContentPadding(FMargin(7,6))
             .ToolTipText(FText::FromString(TEXT("Effacer cette affectation"))).OnClicked_Lambda([this,&R,Minus]{
-                R.Clear(Control,Minus);return FReply::Handled();})[Text(TEXT("×"),14,Light)];
+                R.Clear(Control,Minus);return FReply::Handled();})[Text(TEXT("×"),14,MutedInk)];
         Clear->SetEnabled(TAttribute<bool>::CreateLambda([this,&R,Minus]{
             const auto& B=R.Binding(Control);return R.CanEdit() && !(Minus?B.Minus:B.Plus).IsNone();}));
         Add(*Right,SNew(SVerticalBox).Visibility_Lambda([this,&R,Minus]{
             return !Minus || R.SupportsMinus(Control)?EVisibility::Visible:EVisibility::Collapsed;})
-            +SVerticalBox::Slot().AutoHeight()[Text(Minus?TEXT("SENS –  /  BOUTON OU TOUCHE"):TEXT("ENTRÉE PRINCIPALE  /  SENS +"),9,Light,TEXT("Bold"))]
+            +SVerticalBox::Slot().AutoHeight()[Text(Minus?TEXT("SENS –  /  BOUTON OU TOUCHE"):TEXT("ENTRÉE PRINCIPALE  /  SENS +"),9,MutedInk,TEXT("Bold"))]
             +SVerticalBox::Slot().AutoHeight().Padding(0,2,0,0)
             [SNew(SHorizontalBox)
              +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Live(Read,13)]
@@ -600,20 +780,21 @@ void SFlightMenu::Devices(SVerticalBox& List)
             case T::Pulse: case T::Switch: return FString(V>.5f?TEXT("Entrée active"):TEXT("Entrée au repos"));
             default: return FString::Printf(TEXT("Valeur   %+.0f %%"),V*100.f);
         }
-    },12,Gold),3);
-    Add(*Right,SNew(SBox).HeightOverride(6)[SNew(SProgressBar).Percent_Lambda([this,&R]{
+    },12,Rust),3);
+    static const FSlateColorBrush MeterTrack(Ink);
+    Add(*Right,SNew(SBox).HeightOverride(6)[SNew(SProgressBar).BackgroundImage(&MeterTrack).FillImage(Fill()).Percent_Lambda([this,&R]{
         const auto Type=ControlSpec(Control).Type;
         const float V=R.Preview(Control);
         return TOptional<float>((Type==T::Signed || Type==T::Trim || Type==T::CenteredRange)?(1.f+V)*.5f:V);
-    }).FillColorAndOpacity(Gold)]);
+    }).FillColorAndOpacity(Coral)]);
     Add(List,SNew(SHorizontalBox)
         +SHorizontalBox::Slot().FillWidth(.42f).Padding(0,0,16,0)[Left]
-        +SHorizontalBox::Slot().FillWidth(.58f)[SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(FLinearColor(.018f,.042f,.045f)).Padding(12)[Right]],8);
+        +SHorizontalBox::Slot().FillWidth(.58f)[SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(FLinearColor(.96f,.825f,.57f)).Padding(12)[Right]],8);
     auto MessageText=Live([&R]{
         if (!R.Notice.IsEmpty()) return R.Notice;
         return R.CanEdit()?FString(TEXT("Choisis une fonction, puis attribue un axe, un bouton ou une touche.")):
             FString(TEXT("Branche une radio ou sélectionne Clavier pour attribuer les touches."));
-    },12,Light);
+    },12,MutedInk);
     MessageText->SetAutoWrapText(true);
     Add(List,MessageText,5);
     Add(List,SNew(SHorizontalBox).Visibility_Lambda([&R]{return R.Learning()?EVisibility::Visible:EVisibility::Collapsed;})
@@ -654,8 +835,8 @@ void SFlightMenu::Graphics(SVerticalBox& List)
 {
     if (ConfirmUntil>0.)
     {
-        Add(List,Text(TEXT("Conserver cet affichage ?"),17,Paper,TEXT("Bold")),8);
-        Add(List,Live([this]{return FString::Printf(TEXT("Rétablissement dans %d s"),FMath::Max(0,FMath::CeilToInt(ConfirmUntil-FPlatformTime::Seconds())));},13,Light),18);
+        Add(List,Text(TEXT("Conserver cet affichage ?"),17,Ink,TEXT("Bold")),8);
+        Add(List,Live([this]{return FString::Printf(TEXT("Rétablissement dans %d s"),FMath::Max(0,FMath::CeilToInt(ConfirmUntil-FPlatformTime::Seconds())));},13,MutedInk),18);
         Add(List,Button(TEXT("Confirm"),TEXT("Conserver"),[this]{SaveGraphics();},true),5);
         Add(List,Button(TEXT("Revert"),TEXT("Rétablir"),[this]{Go(EPage::Graphics);}));
         return;
@@ -671,13 +852,13 @@ void SFlightMenu::Graphics(SVerticalBox& List)
         [this](int32){bVsync=!bVsync;Message.Empty();}),12);
     auto RangeRow=[this,&List](const TCHAR* Label,FName SliderTag,bool& Visible,int32& Meters)
     {
-        Add(List,Text(Label,12,Light,TEXT("Bold")),3);
+        Add(List,Text(Label,12,MutedInk,TEXT("Bold")),3);
         Add(List,SNew(SHorizontalBox)
             +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,10,0)
-            [SNew(SCheckBox).IsChecked_Lambda([&Visible]{return Visible?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+            [SNew(SCheckBox).Style(&CheckStyle()).IsChecked_Lambda([&Visible]{return Visible?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
                 .OnCheckStateChanged_Lambda([this,&Visible](ECheckBoxState State){Visible=State==ECheckBoxState::Checked; Message.Empty();})]
             +SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
-            [SNew(SSlider).Tag(SliderTag).MinValue(20.f).MaxValue(500.f).StepSize(1.f).MouseUsesStep(true)
+            [SNew(SSlider).SliderBarColor(Ink).SliderHandleColor(Coral).Tag(SliderTag).MinValue(20.f).MaxValue(500.f).StepSize(1.f).MouseUsesStep(true)
                 .IsEnabled_Lambda([&Visible]{return Visible;}).Value_Lambda([&Meters]{return float(Meters);})
                 .OnValueChanged_Lambda([this,&Meters](float Value){Meters=FMath::Clamp(FMath::RoundToInt(Value),20,500);Message.Empty();})]
             +SHorizontalBox::Slot().AutoWidth().Padding(10,0,0,0)
@@ -685,8 +866,45 @@ void SFlightMenu::Graphics(SVerticalBox& List)
     };
     RangeRow(TEXT("DISTANCE DE L’HERBE"),TEXT("GrassRange"),ShowGrass,GrassDistance);
     RangeRow(TEXT("DISTANCE DES FILETS D’AIR"),TEXT("TrailRange"),ShowTrails,TrailDistance);
-    Add(List,Live([this]{return !Message.IsEmpty()?Message:Mode==EWindowMode::WindowedFullscreen?FString(TEXT("Sans bordure : résolution du bureau.")):FString();},11,Light),6);
+    Add(List,Live([this]{return !Message.IsEmpty()?Message:Mode==EWindowMode::WindowedFullscreen?FString(TEXT("Sans bordure : résolution du bureau.")):FString();},11,MutedInk),6);
     Add(List,Button(TEXT("Apply"),TEXT("Appliquer"),[this]{Apply();},true),5);
+}
+
+void SFlightMenu::OpenMapFromFlight()
+{
+    bMapFromFlight=true;
+    Go(EPage::Map);
+}
+void SFlightMenu::CloseMap()
+{
+    if (bMapFromFlight) { bMapFromFlight=false; Plane->Fly(); }
+    else Go(EPage::Home);
+}
+void SFlightMenu::Map(SVerticalBox& List)
+{
+    Add(List,Text(TEXT("NORD ↑     X vers le nord   ·   Y vers l’est   ·   Distances en mètres"),12,MutedInk),6);
+    Add(List,SAssignNew(MapWidget,SFlightMap).Plane(Plane.Get()),4);
+    Add(List,SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(8)
+        [Live([this]{return MapWidget->Coordinates();},13,Gold)],6);
+    Add(List,SNew(SHorizontalBox)
+        +SHorizontalBox::Slot()[Button(TEXT("MapOut"),TEXT("Zoom −"),[this]{MapWidget->Zoom(1.5,MapWidget->GetCachedGeometry().GetLocalSize()*.5);})]
+        +SHorizontalBox::Slot()[Button(TEXT("MapIn"),TEXT("Zoom +"),[this]{MapWidget->Zoom(1./1.5,MapWidget->GetCachedGeometry().GetLocalSize()*.5);})]
+        +SHorizontalBox::Slot()[Button(TEXT("MapCentre"),TEXT("Ma position"),[this]{MapWidget->Recenter();})],5);
+    Add(List,Text(TEXT("Glisser pour déplacer la carte · Molette pour zoomer sous le pointeur"),11,MutedInk),8);
+}
+
+void SFlightMenu::Vario(SVerticalBox& List)
+{
+    Add(List,Choice(TEXT("SON DU VARIO"),[this]{return FString(Plane->VarioEnabled()?TEXT("Activé"):TEXT("Désactivé"));},
+        [this](int32){Plane->SetVario(!Plane->VarioEnabled(),Plane->VarioClimb(),Plane->VarioSink());}),12);
+    Add(List,Choice(TEXT("SEUIL DE MONTÉE"),[this]{return FString::Printf(TEXT("+%.1f m/s"),Plane->VarioClimb());},
+        [this](int32 Step){Plane->SetVario(Plane->VarioEnabled(),Plane->VarioClimb()+.1f*Step,Plane->VarioSink());}),10);
+    Add(List,Choice(TEXT("SEUIL DE DESCENTE"),[this]{return FString::Printf(TEXT("%.1f m/s"),Plane->VarioSink());},
+        [this](int32 Step){Plane->SetVario(Plane->VarioEnabled(),Plane->VarioClimb(),Plane->VarioSink()+.1f*Step);}),12);
+    auto Hint=Text(TEXT("En montée, les bips accélèrent. En descente, le son devient grave et continu. Entre les deux seuils, le vario reste silencieux."),12,MutedInk);
+    Hint->SetAutoWrapText(true);
+    Add(List,Hint,12);
+    Add(List,Text(TEXT("Marche / arrêt en vol · ")+Plane->Radio.Shortcut(EGliderControl::Vario),12,Rust),12);
 }
 
 void SFlightMenu::Weather(SVerticalBox& List)
@@ -704,13 +922,13 @@ void SFlightMenu::Weather(SVerticalBox& List)
             const int32 Step=S>0 ? FMath::FloorToInt(DraftWeather.WindFromDegrees/15.)+1 : FMath::CeilToInt(DraftWeather.WindFromDegrees/15.)-1;
             DraftWeather.WindFromDegrees=(Step*15+360)%360;Message.Empty();
         }),5);
-    Add(List,Text(TEXT("Provenance : 0° nord · 90° est · 180° sud."),11,Light),12);
+    Add(List,Text(TEXT("Provenance : 0° nord · 90° est · 180° sud."),11,MutedInk),12);
     Add(List,Choice(TEXT("ACTIVITÉ THERMIQUE"),[this]{return FString::Printf(TEXT("%d %%"),FMath::RoundToInt(DraftWeather.ThermalStrength*100));},
         [this](int32 S){DraftWeather.ThermalStrength=FMath::Clamp(DraftWeather.ThermalStrength+.25*S,0.,2.);Message.Empty();}),10);
     Add(List,Choice(TEXT("TURBULENCE"),[this]{return FString::Printf(TEXT("%d %%"),FMath::RoundToInt(DraftWeather.Turbulence*100));},
         [this](int32 S){DraftWeather.Turbulence=FMath::Clamp(DraftWeather.Turbulence+.1*S,0.,1.);Message.Empty();}),12);
-    Add(List,Text(TEXT("La pente porte du côté exposé au vent.\nLes thermiques dépendent du sol et de l’altitude."),11,Light),10);
-    Add(List,Live([this]{return Message;},11,Gold),6);
+    Add(List,Text(TEXT("La pente porte du côté exposé au vent.\nLes thermiques dépendent du sol et de l’altitude."),11,MutedInk),10);
+    Add(List,Live([this]{return Message;},11,Rust),6);
     Add(List,Button(TEXT("DefaultWeather"),TEXT("Rétablir la météo de référence"),[this]{
         DraftWeather=ValleyAir::FWeatherSettings{};Message=TEXT("Valeurs de référence prêtes à appliquer.");
     }),5);
@@ -770,11 +988,27 @@ void SFlightMenu::CancelDisplayChange()
 void SFlightMenu::Tick(const FGeometry& Geometry,double Time,float Delta)
 {
     SCompoundWidget::Tick(Geometry,Time,Delta);
+    if (HomeAfterStartup && PosterFirstFrame == 0.) PosterFirstFrame = FPlatformTime::Seconds();
     if (ConfirmUntil>0. && FPlatformTime::Seconds()>=ConfirmUntil) Go(EPage::Graphics);
+}
+
+// Called during the world tick so Slate can lay out the home screen before its first paint.
+void SFlightMenu::UpdateStartupPoster()
+{
+    if (!IsShowingStartupPoster() || PosterFirstFrame == 0.) return;
+    const double VisibleSeconds = FPlatformTime::Seconds() - PosterFirstFrame;
+    // Allow the home screen to open even if aircraft texture streaming stalls.
+    if (VisibleSeconds < 5. || (!Plane->IsAppearanceReady() && VisibleSeconds < 15.)) return;
+    ChildSlot.AttachWidget(HomeAfterStartup.ToSharedRef());
+    HomeAfterStartup.Reset();
+    StartupPoster.Reset();
+    FocusFirst();
+    UE_LOG(LogTemp, Display, TEXT("Startup poster handed off to home after %.2f s"), VisibleSeconds);
 }
 
 FReply SFlightMenu::OnPreviewKeyDown(const FGeometry& Geometry,const FKeyEvent& Key)
 {
+    if (HomeAfterStartup) return FReply::Handled();
     if (Page==EPage::Devices)
     {
         auto& R=Plane->Radio;
@@ -797,6 +1031,11 @@ FReply SFlightMenu::OnKeyUp(const FGeometry& Geometry,const FKeyEvent& Key)
 
 FReply SFlightMenu::OnKeyDown(const FGeometry& Geometry,const FKeyEvent& Key)
 {
+    if (Page==EPage::Map && !Key.IsRepeat() && (Key.GetKey()==EKeys::Escape || Key.GetKey()==EKeys::F2))
+    {
+        CloseMap();
+        return FReply::Handled();
+    }
     if (Key.GetKey()==EKeys::Escape && !Key.IsRepeat())
     {
         if (ConfirmUntil>0.) Go(EPage::Graphics);

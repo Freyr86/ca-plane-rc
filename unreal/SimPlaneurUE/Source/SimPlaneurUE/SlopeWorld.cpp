@@ -1,4 +1,5 @@
 #include "SlopeWorld.h"
+#include "Airfield.h"
 #include "SlopeFlightPawn.h"
 #include "ValleyLandscape.h"
 #include "SceneContact.h"
@@ -29,6 +30,10 @@ namespace
     constexpr float PatchSize = 9000.f;
     constexpr float FineStep = 50.f;
     constexpr float MountainStep = 2500.f;
+    // Square patch aligned with the 25 m mountain grid. The fine edges snap to its triangles.
+    const FVector2D AirfieldMin(20000.,-150000.);
+    constexpr float AirfieldSize=25000.f, AirfieldStep=250.f;
+    const FBox2D AirfieldBounds(AirfieldMin,AirfieldMin+FVector2D(AirfieldSize));
     const FVector2D PatchMin(FMath::GridSnap(ASlopeWorld::PilotX-PatchSize/2,CoarseStep),
                              FMath::GridSnap(ASlopeWorld::PilotY-PatchSize/2,CoarseStep));
 
@@ -102,7 +107,18 @@ namespace
 float ASlopeWorld::TerrainHeightCm(float X, float Y)
 {
     const float Range = FVector2D(X-PilotX,Y-PilotY).Size();
-    if (Range >= 26000.f) return Valley::Height(X,Y);
+    if (Range >= 26000.f)
+    {
+        const float Natural=Valley::Height(X,Y);
+        if (!AirfieldBounds.IsInside(FVector2D(X,Y))) return Natural;
+        const FVector2D P=Airfield::Local(X,Y);
+        // Grade the runway and the small apron; blend the earthworks into the hillside.
+        const double Outside=FMath::Max(FMath::Abs(P.X)-Airfield::HalfLength-350.,
+            FMath::Max(-P.Y-Airfield::HalfWidth-350.,P.Y-Airfield::HalfWidth-350.
+                -1300.*(1.-FMath::SmoothStep(650.,1600.,FMath::Abs(P.X)))));
+        static const float Datum=Valley::Height(Airfield::Centre.X,Airfield::Centre.Y);
+        return FMath::Lerp(Datum,Natural,float(FMath::SmoothStep(0.,3800.,Outside)));
+    }
     const float Linear = FMath::Clamp((X + 8500.0f) / 27500.0f, 0.0f, 1.0f);
     const float Smooth = Linear * Linear * (3.0f - 2.0f * Linear);
     float Height = FMath::Lerp(2700.0f, -2400.0f, Smooth);
@@ -195,11 +211,13 @@ void ASlopeWorld::BuildTerrain()
     BuildTerrainSection(0, TerrainCells, CoarseStep, ValleyMin, FBox2D(PatchMin,PatchMin+FVector2D(PatchSize,PatchSize)),MountainStep);
     BuildTerrainSection(1, int32(PatchSize/FineStep), FineStep, PatchMin, FBox2D(ForceInit),CoarseStep);
     BuildTerrainSection(2, 448, MountainStep, FVector2D(-560000,-560000),FBox2D(ValleyMin,-ValleyMin),0.f);
+    BuildTerrainSection(3,int32(AirfieldSize/AirfieldStep),AirfieldStep,AirfieldMin,FBox2D(ForceInit),MountainStep);
     BuildLake();
 }
 
 float ASlopeWorld::TerrainGridSpacing(float X,float Y)
 {
+    if (AirfieldBounds.IsInside(FVector2D(X,Y))) return AirfieldStep;
     if (X>=PatchMin.X && X<PatchMin.X+PatchSize && Y>=PatchMin.Y && Y<PatchMin.Y+PatchSize) return FineStep;
     return FMath::Abs(X)<TerrainSizeCm/2 && FMath::Abs(Y)<TerrainSizeCm/2 ? CoarseStep : MountainStep;
 }
@@ -269,7 +287,9 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
             Normal.Normalize();
             Vertices.Add(FVector(X, Y, H));
             Normals.Add(Normal);
-            UVs.Add(FVector2D(X, Y) / 4000.0f);
+            // The site material reads runway-relative coordinates; the meadow already uses world-space UVs.
+            const FVector2D Local=Airfield::Local(X,Y);
+            UVs.Add(Section==3 ? FVector2D(Local.X/Airfield::HalfLength,Local.Y/Airfield::HalfWidth) : FVector2D(X,Y)/4000.);
             const float AlpineRock = FMath::SmoothStep(.12f,.42f,1.f-float(Normal.Z)) * FMath::SmoothStep(9000.f,22000.f,H);
             const float FaceRock=(1.f-FMath::SmoothStep(300.f,780.f,FMath::Abs(CliffOffset(X,Y))))
                 *(1.f-FMath::SmoothStep(9000.f,17000.f,FMath::Abs(X-PilotX)))
@@ -286,7 +306,8 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
         for (int32 YIndex = 0; YIndex < Cells; ++YIndex)
         {
             const float X = Origin.X + XIndex*Spacing, Y = Origin.Y + YIndex*Spacing;
-            if (Hole.bIsValid && Hole.IsInside(FVector2D(X+Spacing*.5f,Y+Spacing*.5f)))
+            const FVector2D Mid(X+Spacing*.5f,Y+Spacing*.5f);
+            if ((Hole.bIsValid && Hole.IsInside(Mid)) || (Section==2 && AirfieldBounds.IsInside(Mid)))
                 continue;
             const int32 A = XIndex * Points + YIndex;
             const int32 B = A + 1;
@@ -297,7 +318,7 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
         }
     }
     Terrain->CreateMeshSection_LinearColor(Section, Vertices, Triangles, Normals, UVs, Colors, Tangents, true, false);
-    Terrain->SetMaterial(Section, GroundMaterial());
+    Terrain->SetMaterial(Section, Section==3 ? LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Meadow/M_AirfieldSward")) : GroundMaterial());
 }
 
 void ASlopeWorld::AddScenery()
@@ -364,6 +385,9 @@ void ASlopeWorld::AddScenery()
             const float Scale=Height/FMath::Max(1.,Bounds.GetSize().Z);
             const float WidthScale=Scale*Random.FRandRange(.90f,1.45f);
             const float Yaw=Random.FRandRange(0,360);
+            const FVector2D Field=Airfield::Local(X,Y);
+            if ((FMath::Abs(Field.X)<Airfield::HalfLength+2400 && FMath::Abs(Field.Y)<Airfield::HalfWidth+1000)
+                || FVector2D::DistSquared(FVector2D(X,Y),Airfield::Hut)<FMath::Square(1500.)) continue;
             if (FVector2D(X-ChaletX-450.f,Y-ChaletY).SizeSquared()<FMath::Square(1550.f) ||
                 FVector2D(X+74000.f,Y-8500.f).SizeSquared()<FMath::Square(1000.f)) continue;
             Timber[Kind].Emplace(FRotator(0,Yaw,0),FVector(X,Y,Z-Bounds.Min.Z*Scale-(YoungPine ? 3.f : 12.f)),

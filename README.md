@@ -4,6 +4,12 @@ Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++
 
 ![La prairie du lac](reports/unreal_prototype/vallee-3d-sol.jpg)
 
+### Le hangar en images
+
+| MDM-1 Fox · 7 m | Jonker JS-3 · 9 m | Snipe 2 · 1,49 m |
+| --- | --- | --- |
+| [![MDM-1 Fox](reports/unreal_prototype/galerie/fox.jpg)](reports/unreal_prototype/galerie/fox.jpg) | [![Jonker JS-3](reports/unreal_prototype/galerie/js3.jpg)](reports/unreal_prototype/galerie/js3.jpg) | [![Snipe 2](reports/unreal_prototype/galerie/snipe.jpg)](reports/unreal_prototype/galerie/snipe.jpg) |
+
 ## Jouer
 
 L’installateur Windows est proposé dans les [versions téléchargeables](https://github.com/Freyr86/ca-plane-rc/releases). Il contient le jeu autonome : Unreal Editor, Visual Studio et Git ne sont pas nécessaires pour jouer.
@@ -12,7 +18,7 @@ Le projet reste un prototype : les réglages physiques sont affinés par compara
 
 ## Fonctionnalités
 
-- Graupner Topy 4522 et K3600, modèles colorés et fiches physiques séparées.
+- Neuf appareils au hangar, du Snipe 2 de lancer main au Jonker JS-3 de 9 m. Le Flight-Composites Nubis de 5,95 m dispose de volets et d’aérofreins indépendants.
 - Radio USB (notamment TX16S), affectations personnalisées et pilotage clavier.
 - Masse, centrage avec silhouette interactive, force des commandes de −500 à +500 % par modèle.
 - Vent relatif, thermiques, ascendances de relief, boussole et filets d’air.
@@ -75,4 +81,6 @@ Les tests couvrent la dynamique, le vent, les gains de commande, le lancer, les 
 
 ## Ressources
 
-Les sources du décor sont documentées dans [SOURCES.md](unreal/SimPlaneurUE/SourceAssets/Meadow/SOURCES.md). Les modèles colorés des planeurs ont été fournis pour ce projet sous forme d’exports Meshy. Unreal Engine et les ressources tierces conservent leurs conditions propres ; la visibilité publique du dépôt ne constitue pas une licence générale de redistribution de ces éléments.
+Les sources du décor sont documentées dans [SOURCES.md](unreal/SimPlaneurUE/SourceAssets/Meadow/SOURCES.md). Les visuels du Topy et du K3600 proviennent d’exports Meshy. Le Nubis a été redessiné d’après les dimensions et les photos du constructeur. Sa fiche distingue les mesures publiées des réglages estimés pour le simulateur. [Références du Nubis](docs/reference-aircraft/NUBIS.md)
+
+Unreal Engine et les ressources tierces conservent leurs conditions propres ; la visibilité publique du dépôt ne constitue pas une licence générale de redistribution de ces éléments.

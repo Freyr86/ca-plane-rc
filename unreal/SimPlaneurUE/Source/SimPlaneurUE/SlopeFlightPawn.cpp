@@ -1,4 +1,5 @@
 #include "SlopeFlightPawn.h"
+#include "Airfield.h"
 #include "Misc/ConfigCacheIni.h"
 #include "SlopeWorld.h"
 #include "SceneContact.h"
@@ -35,6 +36,7 @@ namespace
         const TCHAR* Id;
         const TCHAR* Name;
         const TCHAR* Mesh;
+        const TCHAR* Description;
         double SpanCm, LengthCm;
         double AssistedReleaseMps = 0.;
         double WingRisePerSpan = 7.5/59.5;
@@ -42,13 +44,15 @@ namespace
         double TipSweepCm = 0., BodyLengthCm = 0.;
     };
     const FHangarEntry Aircraft[] = {
-        {TEXT("Topy4522"), TEXT("Graupner Topy 4522"), TEXT("/Game/Aircraft/TopyCouleur.TopyCouleur"),119.,86.},
-        {TEXT("K3600"), TEXT("K3600"), TEXT("/Game/Aircraft/K3600Couleur.K3600Couleur"),360.,177.},
-        {TEXT("VJX2022"), TEXT("VJX F3F · 2022"), TEXT("/Game/Aircraft/VJX2022/VJX2022.VJX2022"),293.,135.5},
-        {TEXT("Fox7m"), TEXT("MDM-1 Fox · 7 m"), TEXT("/Game/Aircraft/Fox7mEffile/Fox7mEffile.Fox7mEffile"),700.,369.,22.,.081/3.5,FVector4(8,0,-22.437,13.5)},
-        {TEXT("JS3_9m"), TEXT("Jonker JS-3 Rapture · 9 m"), TEXT("/Game/Aircraft/JS3_9m/JS3_9m.JS3_9m"),900.,347.,21.,.18/4.5,FVector4(1,0,-26,9)},
-        {TEXT("Snipe2"), TEXT("Snipe 2 · DLG"), TEXT("/Game/Aircraft/Snipe2/Snipe2.Snipe2"),149.,108.1,0.,.060/.745},
-        {TEXT("LongBowMk2"), TEXT("LongBow Mk2 · Will Beavor"), TEXT("/Game/Aircraft/LongBowMk2/LongBowMk2.LongBowMk2"),215.5,59.3,0.,0.,FVector4(0,0,0,0),35.,33.}
+        {TEXT("Topy4522"), TEXT("Graupner Topy 4522"), TEXT("/Game/Aircraft/TopyCouleur.TopyCouleur"),TEXT("2 axes"),119.,86.},
+        {TEXT("K3600"), TEXT("K3600"), TEXT("/Game/Aircraft/K3600Couleur.K3600Couleur"),TEXT("1,77 m de long · 79,1 dm²"),360.,177.},
+        {TEXT("VJX2022"), TEXT("VJX F3F · 2022"), TEXT("/Game/Aircraft/VJX2022/VJX2022.VJX2022"),TEXT("F3F · vol expérimental"),293.,135.5},
+        {TEXT("Fox7m"), TEXT("MDM-1 Fox · 7 m"), TEXT("/Game/Aircraft/Fox7mEffile/Fox7mEffile.Fox7mEffile"),TEXT("Voltige · lancer assisté"),700.,369.,22.,.081/3.5,FVector4(8,0,-22.437,13.5)},
+        {TEXT("JS3_9m"), TEXT("Jonker JS-3 Rapture · 9 m"), TEXT("/Game/Aircraft/JS3_9m/JS3_9m.JS3_9m"),TEXT("Vol de distance"),900.,347.,21.,.18/4.5,FVector4(1,0,-26,9)},
+        {TEXT("Snipe2"), TEXT("Snipe 2 · DLG"), TEXT("/Game/Aircraft/Snipe2/Snipe2.Snipe2"),TEXT("F3K · lancer disque"),149.,108.1,0.,.060/.745},
+        {TEXT("LongBowMk2"), TEXT("LongBow Mk2 · Will Beavor"), TEXT("/Game/Aircraft/LongBowMk2/LongBowMk2.LongBowMk2"),TEXT("Aile volante à élevons"),215.5,59.3,0.,0.,FVector4(0,0,0,0),35.,33.},
+        {TEXT("Apus4"), TEXT("FEMO APUS 4"), TEXT("/Game/Aircraft/Apus4/Apus4.Apus4"),TEXT("2 axes"),135.,99.,0.,.025},
+        {TEXT("Nubis"), TEXT("Flight-Composites Nubis"), TEXT("/Game/Aircraft/Nubis/Nubis.Nubis"),TEXT("Thermique et pente · 112 dm²"),595.,221.,13.5,.372/2.975,FVector4(0,0,0,0),20.8}
     };
     constexpr double DiscusRadiusCm = 144.;
     constexpr double DiscusArc = 1.5*UE_PI;
@@ -136,21 +140,37 @@ ASlopeFlightPawn::ASlopeFlightPawn()
 FTransform ASlopeFlightPawn::MenuCameraPose() const
 {
     const double T = TourTime * UE_TWO_PI / 94.;
-    const double X = ASlopeWorld::PilotX + 1500. * FMath::Sin(T);
-    const double Y = ASlopeWorld::PilotY + 1900. * FMath::Sin(T) + 650. * (1. - FMath::Cos(T));
-    const FVector Eye(X,Y,9700. + 320. * FMath::Sin(T));
-    const FVector Look(-86500. + 12500.*FMath::Sin(T), 35000. + 19000.*FMath::Cos(T), -2100.);
-    return FTransform((Look-Eye).Rotation(),Eye);
+    if (SelectedSite==3)
+    {
+        const FVector Look(Airfield::Point(0,400),ASlopeWorld::TerrainHeightCm(Airfield::Centre.X,Airfield::Centre.Y));
+        const FVector2D Offset=Airfield::Point(-5900.+2400.*FMath::Sin(T),8100.+850.*FMath::Cos(T));
+        const FVector Eye(Offset,FMath::Max(Look.Z+4400.,ASlopeWorld::TerrainHeightCm(Offset.X,Offset.Y)+2600.));
+        return FTransform((Look-Eye).Rotation(),Eye);
+    }
+    const bool Chalet=SelectedSite==2;
+    const double X=Chalet?ASlopeWorld::ChaletX:ASlopeWorld::PilotX+445;
+    const double Y=Chalet?ASlopeWorld::ChaletY:ASlopeWorld::PilotY-195;
+    const FVector Look(X,Y,ASlopeWorld::TerrainHeightCm(X,Y)+(Chalet?230.:140.));
+    const double Angle=(Chalet?.6:-.55)+.55*FMath::Sin(T);
+    const double Range=Chalet?2350.:1800.;
+    FVector Eye=Look+FVector(Range*FMath::Cos(Angle),Range*FMath::Sin(Angle),Chalet?820.:410.);
+    Eye.Z=FMath::Max(Eye.Z,ASlopeWorld::TerrainHeightCm(Eye.X,Eye.Y)+360.);
+    FRotator Aim=(Look-Eye).Rotation();
+    Aim.Pitch=FMath::Max(Aim.Pitch,-5.);
+    return FTransform(Aim,Eye);
 }
 
-void ASlopeFlightPawn::ShowHangarModel(bool Visible)
+void ASlopeFlightPawn::ShowMenuPresentation(bool Hangar,bool Poster)
 {
-    if (!Visible && PreviewModel != SelectedModel)
+    // Only the hangar previews unconfirmed aircraft. The home poster and flight
+    // both display the saved selection, including after cancelling a preview.
+    if (!Hangar && PreviewModel != SelectedModel)
     {
         PreviewModel = SelectedModel;
         BuildFallbackTopy();
     }
-    bHangarModel = Visible && bMenuOpen;
+    bPosterHome = Poster && bMenuOpen;
+    bHangarModel = (Hangar || Poster) && bMenuOpen;
     if (bHangarModel) PositionHangarModel();
     else PlaneVisual->SetRelativeTransform(FTransform::Identity);
     SetActorHiddenInGame(bMenuOpen && !bHangarModel);
@@ -159,9 +179,19 @@ void ASlopeFlightPawn::ShowHangarModel(bool Visible)
 void ASlopeFlightPawn::PositionHangarModel()
 {
     const FTransform View = MenuCameraPose();
+    if(bPosterHome)
+    {
+        // Frame the selected aircraft as the diagonal of the poster. Only the display
+        // component is posed here; the aircraft and its simulation keep their scale.
+        const double Distance=Aircraft[SelectedModel].SpanCm*1.60;
+        const FVector Offset(1.,.21+.018*FMath::Sin(TourTime*.15),.012+.014*FMath::Sin(TourTime*.27));
+        const FRotator Pose(-10.,127.+5.*FMath::Sin(TourTime*.16),27.+4.*FMath::Sin(TourTime*.24));
+        PlaneVisual->SetWorldLocationAndRotation(View.TransformPosition(Offset*Distance),View.GetRotation()*Pose.Quaternion());
+        return;
+    }
     const FRotator Presentation(-18.,135.+18.*FMath::Sin(TourTime*.12),22.);
     // Common viewing distance makes wingspans directly comparable while browsing.
-    PlaneVisual->SetWorldLocationAndRotation(View.TransformPosition(FVector(1300,295,-25)),
+    PlaneVisual->SetWorldLocationAndRotation(View.TransformPosition(FVector(1300,295,-25)/HangarZoom),
         View.GetRotation()*Presentation.Quaternion());
 }
 
@@ -176,6 +206,7 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
         OutResult.Location = View.GetLocation();
         OutResult.Rotation = View.Rotator();
         OutResult.FOV = 64.f;
+        if(bPosterHome && PosterPrint) OutResult.PostProcessSettings.AddBlendable(PosterPrint,1.f);
     }
     else if (bNoclip)
     {
@@ -220,6 +251,7 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 void ASlopeFlightPawn::BeginPlay()
 {
     Super::BeginPlay();
+    PosterPrint=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_MenuAlpinePrint.M_MenuAlpinePrint"));
     ValleyAir::LoadSettings();
     PrepareFlightAudio();
     GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
@@ -299,7 +331,7 @@ void ASlopeFlightPawn::BuildWingSection()
     }
 }
 
-const TCHAR* ASlopeFlightPawn::ModelName() const { return Aircraft[PreviewModel].Name; }
+const TCHAR* ASlopeFlightPawn::ModelName() const { return Aircraft[bPosterHome ? SelectedModel : PreviewModel].Name; }
 
 FString ASlopeFlightPawn::ModelNumber() const
 {
@@ -313,14 +345,22 @@ FString ASlopeFlightPawn::ModelNumber() const
     return FString::Printf(TEXT("%02d / %02d"), Position, Total);
 }
 
+double ASlopeFlightPawn::ModelSpanCm() const { return Aircraft[PreviewModel].SpanCm; }
+
+FString ASlopeFlightPawn::HangarSummary() const
+{
+    const FString Metres = FString::SanitizeFloat(ModelSpanCm() / 100., 2).Replace(TEXT("."), TEXT(","));
+    return FString::Printf(TEXT("%s   ·   %s m   ·   %s"), *ModelNumber(), *Metres, Aircraft[PreviewModel].Description);
+}
+
 bool ASlopeFlightPawn::IsControlInUse(EGliderControl Control) const
 {
     using A = EGliderControl;
     if (Control == A::Motor || Control == A::MotorCut) return MotorSettings().Enabled;
-    if (Control == A::Butterfly && PreviewModel == 5) return false;
+    if (Control == A::Butterfly && (PreviewModel == 5 || PreviewModel == 7)) return false;
     if (Control == A::Flaps || Control == A::Butterfly) return HangarModels[PreviewModel].HasFlaps();
     if (Control == A::Spoilers) return HangarModels[PreviewModel].HasSpoilers();
-    if (HangarModels[PreviewModel].HasElevons())
+    if (!HasRudder())
     {
         if (Control == A::Aileron || Control == A::TrimAileron) return !UsesAileronSteering();
         if (Control == A::Rudder || Control == A::TrimRudder) return UsesAileronSteering();
@@ -350,7 +390,8 @@ void ASlopeFlightPawn::BuildFallbackTopy()
     if (Imported && PreviewModel >= 2)
     {
         ImportedTopy->SetRelativeTransform(FTransform::Identity);
-        FuselageCentre = PreviewModel == 6 ? FVector(5.5,0.,0.) : PreviewModel == 5 ? FVector(-28.05,0.,-.5) : PreviewModel == 4 ? FVector(-55.5,0.,-8.) : PreviewModel == 3 ? FVector(-59.5,0.,-5.) : FVector(-26.75,0.,-.5);
+        FuselageCentre = PreviewModel == 7 ? FVector(-17.5,0.,0.) : PreviewModel == 6 ? FVector(5.5,0.,0.) : PreviewModel == 5 ? FVector(-28.05,0.,-.5) : PreviewModel == 4 ? FVector(-55.5,0.,-8.) : PreviewModel == 3 ? FVector(-59.5,0.,-5.) : FVector(-26.75,0.,-.5);
+        if (PreviewModel == 8) FuselageCentre = FVector(Imported->GetBoundingBox().GetCenter().X,0.,0.);
     }
     else if (Imported)
     {
@@ -456,6 +497,12 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         return;
     }
     using A=EGliderControl;
+    if (PlayerController->WasInputKeyJustPressed(EKeys::F2))
+    {
+        OpenMenu();
+        if(Menu.IsValid()) Menu->OpenMapFromFlight();
+        return;
+    }
     if (Radio.Pressed(A::Menu) || PlayerController->WasInputKeyJustPressed(EKeys::Escape))
     {
         OpenMenu();
@@ -472,7 +519,7 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         return;
     }
     const float Rate=Radio.Command(A::LowRates)>.5f?.7f:1.f;
-    const float TargetRudder=Radio.SteeringCommand(AileronSteering[SelectedModel]);
+    const float TargetRudder=Flight.HasRudder() ? Radio.SteeringCommand(AileronSteering[SelectedModel]) : 0.f;
     const float TargetElevator=FMath::Clamp(Rate*Radio.Command(A::Elevator)+Radio.Command(A::TrimElevator),-1.f,1.f);
     Elevator = Radio.IsDriving() ? TargetElevator : FMath::FInterpConstantTo(Elevator, TargetElevator, DeltaSeconds, 3.0f);
     Rudder = Radio.IsDriving() ? TargetRudder : FMath::FInterpConstantTo(Rudder, TargetRudder, DeltaSeconds, 3.0f);
@@ -486,6 +533,7 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         if (Radio.Pressed(A::HandLaunch)) BeginHandLaunch();
     }
     if (Radio.Pressed(A::Instruments)) bShowInstruments=!bShowInstruments;
+    if (Radio.Pressed(A::Vario)) SetVario(!bVarioEnabled,ClimbThreshold,SinkThreshold);
     if (Radio.Pressed(A::WindTrails))
     {
         bShowWindTrails = !bShowWindTrails;
@@ -528,6 +576,12 @@ FVector ASlopeFlightPawn::PilotPosition() const
     // follow the terrain slope relative to that datum.
     return FVector(X,Y,PilotSite.Z+ASlopeWorld::TerrainHeightCm(X,Y)
         -ASlopeWorld::TerrainHeightCm(PilotSite.X,PilotSite.Y));
+}
+
+FVector2D ASlopeFlightPawn::MapPositionXY() const
+{
+    const FVector P=bNoclip?NoclipPosition:(bHeldForLaunch?PilotPosition():GetActorLocation());
+    return FVector2D(P.X*.01,P.Y*.01);
 }
 
 bool ASlopeFlightPawn::FindPilotGround(const FVector& Position, FHitResult& Hit,bool IncludeWater) const
@@ -597,18 +651,19 @@ void ASlopeFlightPawn::MoveWalking(float DeltaSeconds)
     PilotOffset=FVector2D::ZeroVector;
 }
 
-void ASlopeFlightPawn::SwitchLaunchSite()
+void ASlopeFlightPawn::SwitchLaunchSite(int32 Step)
 {
     if (!bMenuOpen || !bModelReady) return;
-    const bool ToChalet=SelectedSite==1;
-    const FVector Landing=ToChalet ? FVector(ASlopeWorld::ChaletX+430,ASlopeWorld::ChaletY,0)
-                                   : FVector(ASlopeWorld::PilotX,ASlopeWorld::PilotY,0);
+    constexpr int32 Count=3;
+    const int32 Next=(SelectedSite-1+Step+Count)%Count+1;
+    const FVector Landing=Next==3 ? FVector(Airfield::Pilot,0) : Next==2 ? FVector(ASlopeWorld::ChaletX+430,ASlopeWorld::ChaletY,0)
+                                                                         : FVector(ASlopeWorld::PilotX,ASlopeWorld::PilotY,0);
     FHitResult Ground;
     if (!FindPilotGround(Landing,Ground)) return;
-    SelectedSite=ToChalet ? 2 : 1;
+    SelectedSite=Next;
     PilotSite=Ground.ImpactPoint;
     PilotOffset=FVector2D::ZeroVector;
-    LaunchHeading=0;
+    LaunchHeading=Next==3 ? 122.f : 0.f;
     WalkPitch=0;
     bStartedFlight=false;
     SiteNotice.Reset();
@@ -662,7 +717,9 @@ void ASlopeFlightPawn::OpenMenu()
     bMenuOpen = true;
     Elevator = Rudder = 0.f;
     SetActorHiddenInGame(true);
-    Menu = SNew(SFlightMenu).Plane(this);
+    Menu = SNew(SFlightMenu).Plane(this)
+        .ShowStartupPoster(bFirstMenu && !FParse::Param(FCommandLine::Get(), TEXT("NoSplash")));
+    bFirstMenu = false;
     GEngine->GameViewport->AddViewportWidgetContent(Menu.ToSharedRef(), 20);
     PC->bShowMouseCursor = true;
     FInputModeUIOnly Input;
@@ -681,7 +738,7 @@ void ASlopeFlightPawn::Fly()
     bMenuOpen = false;
     Radio.LeaveMenu();
     bStartedFlight = true;
-    ShowHangarModel(false);
+    ShowMenuPresentation(false,false);
     PC->bShowMouseCursor = false;
     PC->SetInputMode(FInputModeGameOnly());
     FSlateApplication::Get().SetAllUserFocusToGameViewport();
@@ -791,7 +848,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
     if (bHeldForLaunch)
     {
         const float Dt=FMath::Clamp(DeltaSeconds,0.f,.05f);
-        Flight.AdvanceFlaps(Radio.Command(EGliderControl::Flaps),Dt,UsesDiscusLaunch() ? 0. : Radio.Command(EGliderControl::Butterfly));
+        Flight.AdvanceFlaps(Radio.Command(EGliderControl::Flaps),Dt,IsControlInUse(EGliderControl::Butterfly) ? Radio.Command(EGliderControl::Butterfly) : 0.);
         Flight.AdvanceSpoilers(Radio.Command(EGliderControl::Spoilers),Dt);
         Flight.AdvanceServos(Elevator,-Rudder,Aileron,Dt);
         WeatherSeconds+=Dt;
@@ -807,7 +864,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         AirspeedMps=0.f; SinkMps=0.f; AltitudeM=Flight.Altitude();
         if (ThrowSeconds>=Duration)
         {
-            FVector Velocity = FRotator(0,LaunchHeading,0).RotateVector(FVector(SelectedModel == 2 ? 12. : 8.,0.,.8));
+            FVector Velocity = FRotator(0,LaunchHeading,0).RotateVector(FVector((SelectedModel == 2 || SelectedModel == 7) ? 12. : 8.,0.,.8));
             const double ReleaseAirspeed = Aircraft[SelectedModel].AssistedReleaseMps;
             if (ReleaseAirspeed > 0.)
             {
@@ -833,7 +890,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         TimeBank-=FGliderDynamics::TimeStep;
         if (Flight.IsStopped()) continue;
         PreviousPose=Flight.WorldPose();
-        Flight.AdvanceFlaps(Radio.Command(EGliderControl::Flaps),FGliderDynamics::TimeStep,UsesDiscusLaunch() ? 0. : Radio.Command(EGliderControl::Butterfly));
+        Flight.AdvanceFlaps(Radio.Command(EGliderControl::Flaps),FGliderDynamics::TimeStep,IsControlInUse(EGliderControl::Butterfly) ? Radio.Command(EGliderControl::Butterfly) : 0.);
         Flight.AdvanceSpoilers(Radio.Command(EGliderControl::Spoilers),FGliderDynamics::TimeStep);
         const double Throttle = Radio.Command(EGliderControl::MotorCut) > .5f ? 0. : Radio.Command(EGliderControl::Motor);
         Flight.Step(Elevator,-Rudder,Aileron,Throttle);
@@ -886,6 +943,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
     {
         TourTime += DeltaSeconds;
         if (!Menu.IsValid()) OpenMenu();
+        else Menu->UpdateStartupPoster();
     }
     else if (!bContactProof) ReadControls(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);

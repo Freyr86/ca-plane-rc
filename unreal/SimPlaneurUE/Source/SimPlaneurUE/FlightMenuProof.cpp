@@ -15,8 +15,11 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/HUD.h"
 #include "InputKeyEventArgs.h"
 #include "SlopeWorld.h"
+#include "Airfield.h"
+#include "SceneContact.h"
 #include "EngineUtils.h"
 #include "ValleyLandscape.h"
 #include "Camera/CameraTypes.h"
@@ -39,7 +42,9 @@ namespace
 void ASlopeFlightPawn::TestMenu(float Elapsed)
 {
 #if !UE_BUILD_SHIPPING
-    if (Elapsed<5.f+MenuProofStep*1.3f) return;
+    if (Menu.IsValid() && Menu->IsShowingStartupPoster()) return;
+    const bool GalleryProof = FParse::Param(FCommandLine::Get(),TEXT("CoverGalleryProof"));
+    if (Elapsed<5.f || (!GalleryProof && Elapsed<5.f+MenuProofStep*1.3f)) return;
     auto Shot=[](const TCHAR* Name)
     {
         FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Name),true,false,false);
@@ -58,6 +63,136 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
             nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
     };
+    if (GalleryProof)
+    {
+        static constexpr struct { const TCHAR* Mesh; const TCHAR* Filename; } Covers[] = {
+            {TEXT("TopyCouleur"),TEXT("gallery-topy.png")}, {TEXT("K3600Couleur"),TEXT("gallery-k3600.png")},
+            {TEXT("VJX2022"),TEXT("gallery-vjx-2022.png")}, {TEXT("Fox7mEffile"),TEXT("gallery-fox-7m.png")},
+            {TEXT("JS3_9m"),TEXT("gallery-js3-9m.png")}, {TEXT("Snipe2"),TEXT("gallery-snipe-2.png")},
+            {TEXT("LongBowMk2"),TEXT("gallery-longbow-mk2.png")}, {TEXT("Apus4"),TEXT("gallery-apus-4.png")},
+            {TEXT("Nubis"),TEXT("gallery-nubis.png")}
+        };
+        if (FScreenshotRequest::IsScreenshotRequested()) return;
+        const int32 Model = MenuProofStep/2;
+        if (Model==UE_ARRAY_COUNT(Covers)) { FPlatformMisc::RequestExit(false); return; }
+        if (Model==6 && !AvailableModels[Model]) { MenuProofStep+=2; return; }
+        if (MenuProofStep%2==0)
+        {
+            const bool Selected = Model==0 ? Click(TEXT("Hangar")) : Click(TEXT("MODÈLE+"));
+            if (!Selected || ModelIndex()!=Model || !CanSelectModel()) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+            MenuProofWeather=Elapsed;
+            ++MenuProofStep;
+            return;
+        }
+        const UStaticMesh* Mesh=ImportedTopy->GetStaticMesh();
+        if (!Mesh || Mesh->GetName()!=Covers[Model].Mesh || Elapsed-MenuProofWeather>30.)
+        {
+            UE_LOG(LogTemp,Error,TEXT("GALLERY_PROOF missing or unready mesh: %s"),Covers[Model].Mesh);
+            FPlatformMisc::RequestExitWithStatus(false,3); return;
+        }
+        // Keep the actual mesh, materials and hangar lighting. Frame each span in the same 64° view.
+        TourTime=14.;
+        const FTransform View=MenuCameraPose();
+        const FQuat Pose=FRotator(-6.,150.,20.).Quaternion();
+        const FBox Bounds=Mesh->GetBoundingBox();
+        const FTransform MeshToPlane=ImportedTopy->GetRelativeTransform();
+        const FVector HalfWing=Pose.RotateVector(MeshToPlane.TransformVector(FVector(0.,Bounds.GetExtent().Y,0.)));
+        const double Distance=FMath::Abs(HalfWing.Y)/(.65*FMath::Tan(FMath::DegreesToRadians(32.)));
+        const FVector Centre(Distance,HalfWing.Y*HalfWing.X/Distance,HalfWing.Z*HalfWing.X/Distance);
+        const FVector Origin=Centre-Pose.RotateVector(MeshToPlane.TransformPosition(Bounds.GetCenter()));
+        PlaneVisual->SetWorldLocationAndRotation(View.TransformPosition(Origin),View.GetRotation()*Pose);
+        if (!IsAppearanceReady() || Elapsed-MenuProofWeather<2.) return;
+        FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Covers[Model].Filename),false,false,false);
+        UE_LOG(LogTemp,Display,TEXT("GALLERY_PROOF %s %s"),ModelName(),Covers[Model].Filename);
+        ++MenuProofStep;
+        return;
+    }
+    if (FParse::Param(FCommandLine::Get(),TEXT("NavigationProof")))
+    {
+        bool OK=true;
+        switch(MenuProofStep)
+        {
+        case 0: Shot(TEXT("navigation-prairie.png")); break;
+        case 1: OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==2; break;
+        case 2:
+        {
+            const FVector Mast(ASlopeWorld::ChaletX+950,ASlopeWorld::ChaletY+450,0);
+            FHitResult Ground,Top;
+            OK=FindPilotGround(Mast,Ground) && Ground.GetComponent()->ComponentHasTag(TEXT("ground"))
+                && GetWorld()->LineTraceSingleByChannel(Top,Ground.ImpactPoint+FVector(0,0,600),
+                    Ground.ImpactPoint,SceneContact::Channel,FCollisionQueryParams(SCENE_QUERY_STAT(ChaletMast),false,this))
+                && Top.GetComponent()->ComponentHasTag(TEXT("mast"));
+            const double Height=Top.ImpactPoint.Z-Ground.ImpactPoint.Z;
+            OK=OK && FMath::IsNearlyEqual(Height,370.,1.);
+            UE_LOG(LogTemp,Display,TEXT("CHALET_MAST height_cm=%.1f old_ground_offset_cm=%.1f"),
+                Height,ASlopeWorld::TerrainHeightCm(Mast.X,Mast.Y)-Ground.ImpactPoint.Z);
+            Shot(TEXT("navigation-chalet.png")); break;
+        }
+        case 3: OK=Click(TEXT("OpenMap")); break;
+        case 4: OK=Click(TEXT("MapIn")) && Click(TEXT("MapCentre")); break;
+        case 5: Shot(TEXT("navigation-atlas.png")); break;
+        case 6: OK=Click(TEXT("MapOut")) && Click(TEXT("Back")) && Click(TEXT("Hangar")); break;
+        case 7: OK=Click(TEXT("ZOOM DU PLANEUR+")) && HangarZoom>1.f; break;
+        case 8:
+            OK=Click(TEXT("ZOOM DU PLANEUR-")) && FMath::IsNearlyEqual(HangarZoom,1.f);
+            for (int32 I=0; OK && ModelIndex()!=7 && I<UE_ARRAY_COUNT(HangarModels); ++I) OK=Click(TEXT("MODÈLE-"));
+            OK=OK && ModelIndex()==7 && Click(TEXT("SelectAircraft")); break;
+        case 9:
+            if (!IsAppearanceReady() && Elapsed<45.f) return;
+            OK=bPosterHome && IsAppearanceReady() && FString(ModelName())==TEXT("FEMO APUS 4") && ImportedTopy->GetStaticMesh() &&
+                ImportedTopy->GetStaticMesh()->GetPathName()==TEXT("/Game/Aircraft/Apus4/Apus4.Apus4");
+            Shot(TEXT("accueil-apus-selectionne.png")); break;
+        case 10: OK=Click(TEXT("Hangar")) && Click(TEXT("MODÈLE+")) && Click(TEXT("Back")) && ModelIndex()==7; break;
+        case 11:
+            if (!IsAppearanceReady() && Elapsed<50.f) return;
+            OK=ImportedTopy->GetStaticMesh() && ImportedTopy->GetStaticMesh()->GetName()==TEXT("Apus4") && Click(TEXT("Fly")); break;
+        case 12: SendKey(EKeys::F2,IE_Pressed); break;
+        case 13: OK=IsMenuOpen() && Click(TEXT("Back")) && !IsMenuOpen(); OpenMenu(); break;
+        case 14:
+        {
+            OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==3
+                && FVector2D::Distance(FVector2D(PilotPosition()),Airfield::Pilot)<1.;
+            const double Grade=ASlopeWorld::TerrainHeightCm(Airfield::Centre.X,Airfield::Centre.Y);
+            auto Surface=[&](FVector2D P,FName Kind)
+            {
+                FHitResult Hit;
+                return GetWorld()->LineTraceSingleByChannel(Hit,FVector(P,Grade+2200),FVector(P,Grade-1000),
+                    SceneContact::Channel,FCollisionQueryParams(SCENE_QUERY_STAT(AirfieldProof),false,this))
+                    && Hit.GetComponent()->ComponentHasTag(Kind)
+                    && (Kind!=TEXT("ground") || FMath::Abs(Hit.ImpactPoint.Z-Grade)<2.);
+            };
+            for (double Along : {-Airfield::HalfLength,0.,Airfield::HalfLength})
+                for (double Side : {-Airfield::HalfWidth,0.,Airfield::HalfWidth})
+                    OK=OK && Surface(Airfield::Point(Along,Side),TEXT("ground"));
+            OK=OK && Surface(Airfield::Hut,TEXT("hut")) && Surface(Airfield::Sock,TEXT("mast"));
+            break;
+        }
+        case 15: Shot(TEXT("site-03-accueil.png")); break;
+        case 16: OK=Click(TEXT("OpenMap")) && Click(TEXT("MapIn")) && Click(TEXT("MapIn")); break;
+        case 17: Shot(TEXT("site-03-carte.png")); break;
+        case 18:
+            OK=Click(TEXT("Back")) && Click(TEXT("Explore")) && IsNoclip();
+            NoclipPosition=FVector(Airfield::Point(-5300,-13500),PilotSite.Z+7300);
+            NoclipRotation=(FVector(Airfield::Centre,PilotSite.Z)-NoclipPosition).Rotation(); break;
+        case 19: Shot(TEXT("site-03-piste.png")); break;
+        case 20:
+            NoclipPosition=FVector(Airfield::Point(-950,350),PilotSite.Z+390);
+            NoclipRotation=(FVector(Airfield::Point(200,Airfield::HutSide),PilotSite.Z+165)-NoclipPosition).Rotation(); break;
+        case 21: Shot(TEXT("site-03-cabanon.png")); break;
+        case 22: OpenMenu(); OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==1
+                && Click(TEXT("SITE DE VOL-")) && LaunchSiteNumber()==3 && Click(TEXT("Fly")) && IsWalking(); break;
+        case 23: SendKey(EKeys::SpaceBar,IE_Pressed); break;
+        case 24: OK=!IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone();
+            SendKey(EKeys::SpaceBar,IE_Released); OpenMenu(); OK=OK && Click(TEXT("Credits")); break;
+        case 25: Shot(TEXT("club-credits.png")); break;
+        case 26: OK=Click(TEXT("Back")) && FindTagged(Menu.ToSharedRef(),TEXT("Credits")).IsValid();
+            FPlatformMisc::RequestExitWithStatus(false,OK?0:3); break;
+        }
+        UE_LOG(LogTemp,Display,TEXT("NAVIGATION_TEST step=%d pass=%d"),MenuProofStep,OK);
+        if(!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
     if (FParse::Param(FCommandLine::Get(),TEXT("FlightSoundProof")))
     {
         bool OK = true;
@@ -66,7 +201,12 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         case 0:
         {
             FString SettingsFile;
-            OK = FParse::Value(FCommandLine::Get(),TEXT("GameUserSettingsINI="),SettingsFile) && Click(TEXT("Hangar"));
+            OK = FParse::Value(FCommandLine::Get(),TEXT("GameUserSettingsINI="),SettingsFile) && Click(TEXT("Settings")) && Click(TEXT("Vario"));
+            if (!OK) break;
+            SetVario(false,.3f,-2.f);
+            OK = Click(TEXT("SON DU VARIO+")) && Click(TEXT("SEUIL DE MONTÉE+")) && Click(TEXT("SEUIL DE DESCENTE+"))
+                && VarioEnabled() && FMath::IsNearlyEqual(VarioClimb(),.4f) && FMath::IsNearlyEqual(VarioSink(),-1.9f)
+                && Click(TEXT("Back")) && Click(TEXT("Hangar"));
             if (!OK) break;
             if (!Radio.EditingKeyboard()) Radio.CycleDevice(1);
             Radio.BeginLearn(EGliderControl::Motor,false);
@@ -77,7 +217,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             break;
         }
         case 1:
-            OK = Click(TEXT("Fly")) && IsWalking() && WindAudio && WindAudio->IsPlaying();
+            OK = Click(TEXT("Fly")) && IsWalking() && WindAudio && WindAudio->IsPlaying() && VarioAudio && !VarioAudio->IsPlaying();
             SendKey(EKeys::Up,IE_Pressed);
             break;
         case 2:
@@ -94,9 +234,11 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             SendKey(EKeys::SpaceBar,IE_Released);
             SendKey(EKeys::M,IE_Released);
             SendKey(EKeys::C,IE_Pressed);
+            SendKey(EKeys::K,IE_Pressed);
             break;
         case 5:
-            OK = Flight.MotorPowerWatts()==0 && MotorAudio && !MotorAudio->IsPlaying() && FlightView==EFlightView::Chase;
+            OK = !VarioEnabled() && !VarioAudio->IsPlaying() && Flight.MotorPowerWatts()==0 && MotorAudio && !MotorAudio->IsPlaying() && FlightView==EFlightView::Chase;
+            SendKey(EKeys::K,IE_Released);
             SendKey(EKeys::C,IE_Released);
             CycleCamera();
             OK = OK && FlightView==EFlightView::Wide;
@@ -168,12 +310,13 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             OK = FMath::IsNearlyEqual(Span,PhysicsSpan,.2) && PC->ProjectWorldLocationToScreen(Left,L)
                 && PC->ProjectWorldLocationToScreen(Right,R);
             UE_LOG(LogTemp,Display,TEXT("SPAN_PROOF %s visual_cm=%.2f physics_cm=%.2f screen_px=%.1f"),ModelName(),Span,PhysicsSpan,(L-R).Size());
-            const TCHAR* Shots[] = {TEXT("span-topy.png"),TEXT("span-k3600.png"),TEXT("span-vjx.png"),TEXT("span-fox.png"),TEXT("span-js3.png"),TEXT("span-snipe2.png"),TEXT("span-longbow.png")};
+            const TCHAR* Shots[] = {TEXT("span-topy.png"),TEXT("span-k3600.png"),TEXT("span-vjx.png"),TEXT("span-fox.png"),TEXT("span-js3.png"),TEXT("span-snipe2.png"),TEXT("span-longbow.png"),TEXT("span-apus4.png"),TEXT("span-nubis.png")};
+            static_assert(UE_ARRAY_COUNT(Shots)==UE_ARRAY_COUNT(HangarModels));
             Shot(Shots[Model]);
             break;
         }
         case 3:
-            if (Model==6) FPlatformMisc::RequestExit(false);
+            if (Model+1==UE_ARRAY_COUNT(HangarModels)) FPlatformMisc::RequestExit(false);
             else OpenMenu();
             break;
         }
@@ -181,23 +324,101 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         if (!OK) FPlatformMisc::RequestExitWithStatus(false,3);
         return;
     }
+    if (FParse::Param(FCommandLine::Get(),TEXT("NubisLaunchProof")))
+    {
+        if (FScreenshotRequest::IsScreenshotRequested()) return;
+        bool OK = true;
+        switch (MenuProofStep)
+        {
+        case 0:
+        {
+            FString TestSettings;
+            OK = FParse::Value(FCommandLine::Get(),TEXT("GameUserSettingsINI="),TestSettings) && Click(TEXT("Hangar"));
+            for (int32 I=0; OK && ModelIndex()!=8 && I<UE_ARRAY_COUNT(HangarModels); ++I) OK=Click(TEXT("MODÈLE-"));
+            OK = OK && ModelIndex()==8 && CanSelectModel();
+            break;
+        }
+        case 1:
+        {
+            if (!IsAppearanceReady() && Elapsed<30.f) return;
+            const UStaticMesh* Mesh = ImportedTopy->GetStaticMesh();
+            OK = IsAppearanceReady() && ImportedTopy->IsVisible() && Mesh
+                && Mesh->GetPathName()==TEXT("/Game/Aircraft/Nubis/Nubis.Nubis")
+                && FMath::IsNearlyEqual(Mesh->GetBoundingBox().GetSize().Y * FMath::Abs(ImportedTopy->GetComponentScale().Y),595.,.5)
+                && FindTagged(Menu.ToSharedRef(),TEXT("CgPlan")).IsValid();
+            Shot(TEXT("nubis-hangar.png"));
+            break;
+        }
+        case 2:
+            OK = Click(TEXT("TabAdvanced")) && Click(TEXT("DefaultFlapTravel"))
+                && Click(TEXT("TabSetup")) && Click(TEXT("SelectAircraft")) && SelectedModel==8 && bPosterHome;
+            break;
+        case 3:
+            if (!IsAppearanceReady() && Elapsed<35.f) return;
+            OK = bPosterHome && IsAppearanceReady();
+            Shot(TEXT("nubis-accueil.png"));
+            break;
+        case 4:
+        {
+            OK = Click(TEXT("Fly")) && IsWalking() && Flight.HasFlaps() && Flight.HasRudder()
+                && FMath::IsNearlyEqual(Flight.RightTipOffsetNED().Size()*2.,5.95,.005);
+            // Keep the gallery free of overlays; these flags only live in this test session.
+            if (AHUD* Hud = CastChecked<APlayerController>(GetController())->GetHUD()) Hud->bShowHUD = false;
+            ShowTrails(false);
+            MenuProofWeather = Elapsed;
+            break;
+        }
+        case 5:
+            // Poll the released keyboard in game mode before sending the first rising edge.
+            if (Elapsed-MenuProofWeather<.25f) return;
+            OK = IsWalking() && IsAppearanceReady();
+            if (OK) SendKey(EKeys::SpaceBar,IE_Pressed);
+            MenuProofWeather = Elapsed;
+            break;
+        case 6:
+            if (Elapsed-MenuProofWeather<1.f || (IsHeldForLaunch() && Elapsed-MenuProofWeather<3.f)) return;
+            OK = !IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone() && Flight.Airspeed()>0.;
+            UE_LOG(LogTemp,Display,TEXT("NUBIS_RELEASE held=%d throwing=%d key_down=%d launch_input=%.2f stopped=%d contact=%s airspeed=%.2f"),
+                IsHeldForLaunch(),IsThrowing(),CastChecked<APlayerController>(GetController())->IsInputKeyDown(EKeys::SpaceBar),
+                Radio.Command(EGliderControl::HandLaunch),Flight.IsStopped(),*ContactKind.ToString(),Flight.Airspeed());
+            SendKey(EKeys::SpaceBar,IE_Released);
+            if (OK) Shot(TEXT("nubis-vol-sol.png"));
+            break;
+        case 7:
+            CycleCamera();
+            OK = FlightView==EFlightView::Chase;
+            break;
+        case 8:
+            OK = !Flight.IsStopped() && ContactKind.IsNone() && FlightView==EFlightView::Chase;
+            Shot(TEXT("nubis-vol-poursuite.png"));
+            break;
+        case 9:
+            FPlatformMisc::RequestExit(false);
+            break;
+        }
+        UE_LOG(LogTemp,Display,TEXT("NUBIS_LAUNCH_TEST step=%d pass=%d"),MenuProofStep,OK);
+        if (!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
     // Isolated visual check using the same hangar buttons and lighting as a player.
     const bool CheckJS3 = FParse::Param(FCommandLine::Get(),TEXT("JS3LaunchProof"));
     const bool CheckDLG = FParse::Param(FCommandLine::Get(),TEXT("DLGLaunchProof"));
     const bool CheckLongBow = FParse::Param(FCommandLine::Get(),TEXT("LongBowLaunchProof"));
-    const int32 ProofModel = CheckLongBow ? 6 : CheckDLG ? 5 : CheckJS3 ? 4 : 3;
-    if (CheckLongBow || CheckDLG || CheckJS3 || FParse::Param(FCommandLine::Get(),TEXT("FoxAppearanceProof")))
+    const bool CheckApus = FParse::Param(FCommandLine::Get(),TEXT("ApusLaunchProof"));
+    const int32 ProofModel = CheckApus ? 7 : CheckLongBow ? 6 : CheckDLG ? 5 : CheckJS3 ? 4 : 3;
+    if (CheckApus || CheckLongBow || CheckDLG || CheckJS3 || FParse::Param(FCommandLine::Get(),TEXT("FoxAppearanceProof")))
     {
         if (MenuProofStep==0 && !Click(TEXT("Hangar"))) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
         if (MenuProofStep==1)
-            for (int32 I=7; I>ProofModel; --I)
-                if (!Click(TEXT("MODÈLE-"))) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
+            for (int32 I=0; ModelIndex()!=ProofModel && I<UE_ARRAY_COUNT(HangarModels); ++I)
+                if (!Click(TEXT("MODÈLE+"))) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
         if (MenuProofStep==2)
         {
             if (ModelIndex()!=ProofModel || !CanSelectModel()) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
             if (Elapsed<18.f) return;
             if (!IsAppearanceReady()) { FPlatformMisc::RequestExitWithStatus(false,3); return; }
-            Shot(CheckLongBow ? TEXT("longbow-hangar.png") : CheckDLG ? TEXT("dlg-hangar.png") : CheckJS3 ? TEXT("js3-hangar.png") : TEXT("fox-hangar.png"));
+            Shot(CheckApus ? TEXT("apus4-hangar.png") : CheckLongBow ? TEXT("longbow-hangar.png") : CheckDLG ? TEXT("dlg-hangar.png") : CheckJS3 ? TEXT("js3-hangar.png") : TEXT("fox-hangar.png"));
         }
         if (MenuProofStep==4 && Elapsed<22.f) return;
         bool OK = true;
@@ -217,6 +438,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             SendKey(EKeys::SpaceBar,IE_Released);
             OK = !IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone()
                 && (CheckDLG ? FMath::IsNearlyEqual((Flight.LocalWind()-Flight.RelativeFlowNED()).Size(),30.16,.1)
+                             : CheckApus ? !Flight.HasRudder() && !Flight.HasElevons() && !Flight.MotorSettings().Enabled && FMath::IsNearlyEqual((Flight.LocalWind()-Flight.RelativeFlowNED()).Size(),12.03,.1)
                              : CheckLongBow ? Flight.HasElevons() && Flight.MotorSettings().Enabled && FMath::IsNearlyEqual((Flight.LocalWind()-Flight.RelativeFlowNED()).Size(),8.04,.1)
                              : FMath::IsNearlyEqual(Flight.Airspeed(),CheckJS3 ? 21. : 22.,.1));
             if (CheckDLG)
@@ -286,7 +508,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             OK=Click(TEXT("DefaultCg")) && Click(TEXT("SelectAircraft")) && ModelIndex()==1 && Loading().MassGrams == MenuProofMass
                 && Loading().CgMm == StandardLoading().CgMm && UsesAileronSteering()!=MenuProofKSteering;
             break;
-        case 5: OK=Click(TEXT("Devices")); break;
+        case 5: OK=Click(TEXT("Settings")) && Click(TEXT("Devices")); break;
         case 6:
             Shot(TEXT("club-radio.png"));
             // Let Slate refresh bound enabled attributes before learning a key,
@@ -307,7 +529,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             break;
         }
         case 8: OK=Click(TEXT("PÉRIPHÉRIQUE-")) && Click(TEXT("Back")); break;
-        case 9: OK=Click(TEXT("Graphics")); break;
+        case 9: OK=Click(TEXT("Settings")) && Click(TEXT("Graphics")); break;
         case 10:
             Shot(TEXT("club-graphismes.png"));
             OK=Click(TEXT("SYNCHRONISATION VERTICALE+"));

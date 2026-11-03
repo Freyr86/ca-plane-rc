@@ -426,6 +426,43 @@ bool FJS3GlideTest::RunTest(const FString&)
     TestTrue(TEXT("Independent ailerons respond"),FMath::Abs(Banked.WorldPose().Rotator().Roll)>10.);
     return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNubisGlideTest,"SimPlaneur.Physics.Nubis",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FNubisGlideTest::RunTest(const FString&)
+{
+    FGliderDynamics Clean;
+    if (!TestTrue(TEXT("Load Nubis"),Clean.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/Nubis.json")))) return false;
+    TestEqual(TEXT("Unballasted flying mass"),Clean.StandardLoading().MassGrams,9000);
+    TestTrue(TEXT("Standard glider has rudder, flaps and independent airbrakes"),
+        Clean.HasRudder() && Clean.HasFlaps() && Clean.HasSpoilers() && !Clean.MotorSettings().Enabled);
+    Clean.Reset(FVector::ZeroVector);
+    Clean.LaunchFrom(FTransform(FRotator(6.,0.,0.),FVector(0.,0.,150.)),FVector(13.5,0.,0.));
+    for (int32 I=0; I<120; ++I)
+    {
+        Clean.Step(0.,0.,0.);
+        if (Clean.Altitude()<.5 || Clean.WorldPose().ContainsNaN())
+            return TestTrue(TEXT("Manual release clears level ground"),false);
+    }
+    Clean.LaunchFrom(FTransform(FRotator(3.,0.,0.),FVector(0.,0.,8000.)),FVector(15.,0.,-.4));
+    auto Airbrakes=Clean, Crow=Clean;
+    for (int32 I=0; I<960; ++I)
+    {
+        Airbrakes.AdvanceSpoilers(1.,FGliderDynamics::TimeStep);
+        Crow.AdvanceFlaps(0.,FGliderDynamics::TimeStep,1.);
+        Airbrakes.Step(0.,0.,0.);
+        Crow.Step(0.,0.,0.);
+        Clean.Step(0.,0.,0.);
+    }
+    TestTrue(TEXT("Sustained neutral glide"),Clean.Altitude()>66. && Clean.Altitude()<83.
+        && Clean.Airspeed()>10. && Clean.Airspeed()<22.);
+    TestTrue(TEXT("Separate airbrakes and crow both steepen the approach"),
+        Airbrakes.Altitude()<Clean.Altitude()-2. && Crow.Altitude()<Clean.Altitude()-2.);
+    UE_LOG(LogTemp,Display,TEXT("NUBIS_GLIDE clean_h=%.2f clean_V=%.2f airbrakes_h=%.2f crow_h=%.2f"),
+        Clean.Altitude(),Clean.Airspeed(),Airbrakes.Altitude(),Crow.Altitude());
+    return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDiscusClimbTest,"SimPlaneur.Physics.DiscusClimb",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -480,6 +517,37 @@ bool FLongBowTest::RunTest(const FString&)
     UE_LOG(LogTemp,Display,TEXT("LONGBOW_GLIDE airspeed_mps=%.2f altitude_m=%.2f sink_mps=%.2f"),Glide.Airspeed(),Glide.Altitude(),Glide.SinkRate());
     TestTrue(TEXT("Sustained neutral glide"),!Glide.WorldPose().ContainsNaN() && Glide.Altitude()>55.
         && Glide.Airspeed()>5. && Glide.Airspeed()<20. && FMath::Abs(Glide.SinkRate())<3.);
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FApusTest,"SimPlaneur.Physics.Apus4",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FApusTest::RunTest(const FString&)
+{
+    FGliderDynamics Glide;
+    if (!TestTrue(TEXT("Load APUS 4"),Glide.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/Apus4.json")))) return false;
+    TestEqual(TEXT("Flying weight in grams"),Glide.StandardLoading().MassGrams,850);
+    TestTrue(TEXT("Pure glider with flaperons and a fixed fin"),
+        !Glide.HasRudder() && !Glide.HasElevons() && Glide.HasFlaps() && !Glide.HasSpoilers() && !Glide.MotorSettings().Enabled);
+    Glide.Reset(FVector::ZeroVector);
+    Glide.LaunchFrom(FTransform(FRotator(6.,0.,0.),FVector(0,0,8000)),FVector(12.,0.,.8));
+    auto Roll=Glide, Pitch=Glide, Yaw=Glide;
+    for (int32 I=0; I<36; ++I)
+    {
+        Roll.Step(0.,0.,.5);
+        Pitch.Step(-.5,0.,0.);
+        Yaw.Step(0.,.8,0.);
+        Glide.Step(0.,0.,0.);
+    }
+    TestTrue(TEXT("Ailerons bank"),FMath::Abs(Roll.WorldPose().Rotator().Roll)>4.);
+    TestTrue(TEXT("Tailplane pulls up"),Pitch.WorldPose().Rotator().Pitch>Glide.WorldPose().Rotator().Pitch+2.);
+    TestTrue(TEXT("Rudder-only input leaves the glide unchanged"),Yaw.WorldPose().Equals(Glide.WorldPose(),1.e-9));
+    TestEqual(TEXT("Rudder-only input has no servo travel"),Yaw.TotalServoTravel(),0.);
+    for (int32 I=0; I<1200; ++I) Glide.Step(0.,0.,0.);
+    UE_LOG(LogTemp,Display,TEXT("APUS_GLIDE airspeed_mps=%.2f altitude_m=%.2f sink_mps=%.2f"),Glide.Airspeed(),Glide.Altitude(),Glide.SinkRate());
+    TestTrue(TEXT("Neutral glide remains stable"),!Glide.WorldPose().ContainsNaN() && Glide.Altitude()>55.
+        && Glide.Airspeed()>8. && Glide.Airspeed()<22. && FMath::Abs(Glide.SinkRate())<3.);
     return !HasAnyErrors();
 }
 #endif

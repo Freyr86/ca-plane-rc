@@ -34,7 +34,8 @@ namespace
         {TEXT("Aux4"),TEXT("Voie auxiliaire 4"),G::Aux,T::Signed,false},
         {TEXT("WindTrails"),TEXT("Afficher les filets d’air"),G::Simulator,T::Pulse,true,TEXT("F")},
         {TEXT("HandLaunch"),TEXT("Lancer à la main"),G::Simulator,T::Pulse,true,TEXT("SpaceBar")},
-        {TEXT("Noclip"),TEXT("Explorer en noclip"),G::Simulator,T::Pulse,true,TEXT("N")}
+        {TEXT("Noclip"),TEXT("Explorer en noclip"),G::Simulator,T::Pulse,true,TEXT("N")},
+        {TEXT("Vario"),TEXT("Activer le vario sonore"),G::Equipment,T::Pulse,true,TEXT("K")}
     };
     static_assert(UE_ARRAY_COUNT(Controls)==ControlCount);
 }

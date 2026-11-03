@@ -34,6 +34,8 @@ def render(name, seconds, path):
             flutter += .00045 * (noise - flutter)
             hiss += .32 * ((bright-mid) - hiss)
             value = (.78*hiss + .22*(mid-slow)) * (1 + 8*flutter)
+        elif name == "VarioTone":
+            value = math.sin(math.tau * 640 * t)
         elif name == "ServoGear":
             # A small geared actuator heard through the skin of the fuselage.
             phase += math.tau * (215 + 6*math.sin(21*t) + 5*mid) / RATE
@@ -58,7 +60,7 @@ def render(name, seconds, path):
 def build(selected):
     library = unreal.EditorAssetLibrary
     with tempfile.TemporaryDirectory() as temp:
-        for name, seconds in (("SiteWind", 12), ("WingRush", 6), ("ElectricProp", 4), ("ServoGear", 2)):
+        for name, seconds in (("SiteWind", 12), ("WingRush", 6), ("ElectricProp", 4), ("ServoGear", 2), ("VarioTone", 2)):
             asset = "/Game/FlightAudio/" + name
             if (selected and name not in selected) or (not selected and library.does_asset_exist(asset)):
                 continue

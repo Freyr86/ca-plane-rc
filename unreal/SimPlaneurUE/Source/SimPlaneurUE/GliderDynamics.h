@@ -42,6 +42,7 @@ struct FGliderDynamics
     double MotorPowerWatts() const { return AppliedMotorWatts; }
     void SetMotor(FGliderMotor Value) { Motor={Value.Enabled,FMath::Clamp(Value.Watts,1,FGliderMotor::MaxWatts)}; }
     bool HasElevons() const { return Elevons; }
+    bool HasRudder() const { return !FixedFin && !Elevons; }
     bool HasSpoilers() const { return SpoilerDrag > 0.; }
     void AdvanceSpoilers(double Command,double DeltaSeconds)
     {
@@ -115,7 +116,7 @@ private:
     double Left=0,Right=0,AileronServo=0,AileronEffect=0;
     double ServoTravel=0.;
     bool Stopped=false;
-    bool ConventionalTail=false, Elevons=false;
+    bool ConventionalTail=false, Elevons=false, FixedFin=false;
     double YawFromAilerons=0.;
     FFlapTravel Travel, StandardTravel;
     double FlapAreaFraction=0., FlapAngle=0.;

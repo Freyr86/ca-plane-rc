@@ -48,9 +48,12 @@ public:
     FGliderLoading LimitLoading(FGliderLoading Setting) const { return HangarModels[PreviewModel].LimitLoading(Setting); }
     const TCHAR* ModelName() const;
     FString ModelNumber() const;
+    FString HangarSummary() const;
+    double ModelSpanCm() const;
     int32 ModelIndex() const { return PreviewModel; }
     bool CanSelectModel() const { return AvailableModels[PreviewModel]; }
     bool UsesAileronSteering() const { return AileronSteering[PreviewModel]; }
+    bool HasRudder() const { return HangarModels[PreviewModel].HasRudder(); }
     bool IsControlInUse(EGliderControl Control) const;
     void BrowseModel(int32 Step);
     void ApplyModelSettings(FGliderLoading Setting, bool UseAilerons, FGliderControlGains Gains, FFlapTravel Travel, FGliderMotor Motor);
@@ -68,11 +71,13 @@ public:
     FVector PilotPosition() const;
     FString ExplorationNotice() const { return SiteNotice; }
     int32 LaunchSiteNumber() const { return SelectedSite; }
-    void SwitchLaunchSite();
+    void SwitchLaunchSite(int32 Step);
     void ExploreScene();
     void Fly();
     void OpenMenu();
-    void ShowHangarModel(bool Visible);
+    void ShowMenuPresentation(bool Hangar,bool Poster);
+    float HangarZoom = 1.f;
+    FVector2D MapPositionXY() const;
     FFlightRadio Radio;
     FString GetContactLabel() const;
     float GetRadioAxis(int32 Index) const { return Radio.RawAxis(Index); }
@@ -81,6 +86,10 @@ public:
     double FlapAngleDeg() const { return Flight.FlapAngleDeg(); }
     FString GetControlMode() const { return Radio.HasDevice() ? Radio.Status() : TEXT("Clavier"); }
     bool ShowInstruments() const {return bShowInstruments;}
+    bool VarioEnabled() const { return bVarioEnabled; }
+    float VarioClimb() const { return ClimbThreshold; }
+    float VarioSink() const { return SinkThreshold; }
+    void SetVario(bool Enabled, float Climb, float Sink);
 
 bool TrailsVisible() const { return bShowWindTrails; }
     int32 TrailDistance=90;
@@ -128,13 +137,18 @@ private:
     TObjectPtr<UAudioComponent> MotorAudio;
     UPROPERTY()
     TObjectPtr<UAudioComponent> ServoAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> VarioAudio;
+    bool bVarioEnabled = false;
+    float ClimbThreshold = .3f, SinkThreshold = -2.f;
+    float VarioPhase = 0.f, FilteredClimb = 0.f;
     double LastServoTravel = 0.;
     float AudioElapsed = 0.f;
     void PrepareFlightAudio();
     void UpdateFlightAudio(float DeltaSeconds);
 
     FGliderDynamics Flight;
-    FGliderDynamics HangarModels[7];
+    FGliderDynamics HangarModels[9];
     bool AvailableModels[UE_ARRAY_COUNT(HangarModels)] = {};
     bool AileronSteering[UE_ARRAY_COUNT(HangarModels)] = {};
     int32 SelectedModel = 0, PreviewModel = 0;
@@ -188,7 +202,11 @@ private:
     int32 ProofFlight = 0;
     TSharedPtr<SFlightMenu> Menu;
     bool bMenuOpen = true;
+    bool bFirstMenu = true;
     bool bHangarModel = false;
+    bool bPosterHome = false;
+    UPROPERTY()
+    TObjectPtr<UMaterialInterface> PosterPrint;
     FVector FuselageCentre = FVector::ZeroVector;
     FTransform MenuCameraPose() const;
     void PositionHangarModel();

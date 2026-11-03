@@ -84,6 +84,11 @@ void ASimPlaneurHUD::DrawHUD()
     const ASlopeFlightPawn* Plane = Cast<ASlopeFlightPawn>(PlayerOwner->GetPawn());
     if (!Plane) return;
     if (Plane->IsMenuOpen()) return;
+    const FVector2D XY=Plane->MapPositionXY();
+    const float BoxX=Canvas->SizeX-194.f;
+    DrawRect(FLinearColor(.010f,.026f,.032f,.88f),BoxX,12,182,48);
+    DrawText(Plane->IsNoclip()?TEXT("CAMÉRA  ·  F2 CARTE"):Plane->IsHeldForLaunch()?TEXT("PILOTE  ·  F2 CARTE"):TEXT("PLANEUR  ·  F2 CARTE"),FLinearColor(1,.78f,.4f),BoxX+9,16);
+    DrawText(FString::Printf(TEXT("X %+.0f   Y %+.0f m"),XY.X,XY.Y),FLinearColor::White,BoxX+9,35);
     if (Plane->IsNoclip())
     {
         const FVector P=Plane->ExplorationPosition()*.01;
@@ -93,8 +98,8 @@ void ASimPlaneurHUD::DrawHUD()
         DrawText(TEXT("EXPLORATION NOCLIP  ·  Vol suspendu"),FLinearColor(1.f,.75f,.32f),32,31);
         DrawText(TEXT("Souris : regarder   |   ZQSD / WASD / flèches : se déplacer"),FLinearColor::White,32,55);
         DrawText(TEXT("Espace : monter   Ctrl : descendre   Maj : vitesse ×10   Molette : vitesse"),FLinearColor::White,32,77);
-        DrawText(FString::Printf(TEXT("%.0f m/s  |  X %.0f  Y %.0f  Z %.0f m  |  Distance du pilote : %.0f m"),
-            Plane->ExplorationSpeed(),P.X,P.Y,P.Z,FromPilot),FLinearColor::White,32,99);
+        DrawText(FString::Printf(TEXT("%.0f m/s  |  Distance du pilote : %.0f m"),
+            Plane->ExplorationSpeed(),FromPilot),FLinearColor::White,32,99);
         DrawText(Plane->Radio.Shortcut(EGliderControl::Noclip)+TEXT(" : se poser et marcher   |   Échap : menu"),FLinearColor::White,32,121);
         if (!Plane->ExplorationNotice().IsEmpty())
             DrawText(Plane->ExplorationNotice(),FLinearColor(1.f,.75f,.32f),32,147);
@@ -118,8 +123,8 @@ void ASimPlaneurHUD::DrawHUD()
     if (!Plane->ShowInstruments())
     {
         const float Top = Canvas->SizeY - 51.f;
-        DrawRect(FLinearColor(.016f,.032f,.027f,.78f),20,Top,406,32);
-        DrawText(FString::Printf(TEXT("%s   |   %.0f m   ·   %.1f m/s     |     %s instruments   ·   %s filets"), Plane->ModelName(),Plane->GetAltitudeM(),Plane->GetAirspeedMps(),*Plane->Radio.Shortcut(EGliderControl::Instruments),*Plane->Radio.Shortcut(EGliderControl::WindTrails)), FLinearColor::White,32,Top+8);
+        DrawRect(FLinearColor(.016f,.032f,.027f,.78f),20,Top,570,32);
+        DrawText(FString::Printf(TEXT("%s   |   %.0f m   ·   %.1f m/s     |     %s instruments   ·   %s filets   ·   %s vario %s"), Plane->ModelName(),Plane->GetAltitudeM(),Plane->GetAirspeedMps(),*Plane->Radio.Shortcut(EGliderControl::Instruments),*Plane->Radio.Shortcut(EGliderControl::WindTrails),*Plane->Radio.Shortcut(EGliderControl::Vario),Plane->VarioEnabled()?TEXT("actif"):TEXT("coupé")), FLinearColor::White,32,Top+8);
         return;
     }
     const float X = 24.0f;
@@ -160,6 +165,6 @@ void ASimPlaneurHUD::DrawHUD()
             Plane->IsRadioActive() ? FLinearColor(0.35f, 1.0f, 0.45f) : FLinearColor(0.72f, 0.72f, 0.72f));
         TextLine(FString::Printf(TEXT("%s en main  •  %s caméra (%s)  •  Échap menu  •  %.0f Hz"), *Plane->Radio.Shortcut(EGliderControl::Relaunch),*Plane->Radio.Shortcut(EGliderControl::Camera),Plane->FlightCameraName(),Plane->GetPhysicsHz()));
         TextLine(TEXT("Avant lancer : WASD marcher · souris regarder. Pilote fixe après lancer."));
-        TextLine(FString::Printf(TEXT("%s  •  Filets d’air   ·   Bleu : brise   ·   Doré : ascendance"),*Plane->Radio.Shortcut(EGliderControl::WindTrails)));
+        TextLine(FString::Printf(TEXT("%s  •  Filets d’air   ·   Bleu : brise   ·   Doré : ascendance   |   %s  •  Vario %s"),*Plane->Radio.Shortcut(EGliderControl::WindTrails),*Plane->Radio.Shortcut(EGliderControl::Vario),Plane->VarioEnabled()?TEXT("actif"):TEXT("coupé")));
     }
 }

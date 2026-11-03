@@ -51,7 +51,7 @@ if ($args -contains '--test-physics') {
 }
 
 function MissingAircraftAssets {
-    foreach ($model in "VJX2022","Fox7mEffile","JS3_9m","Snipe2","LongBowMk2") {
+    foreach ($model in "VJX2022","Fox7mEffile","JS3_9m","Snipe2","LongBowMk2","Apus4","Nubis") {
         if ($model -eq 'LongBowMk2' -and !(Test-Path -LiteralPath (Join-Path $projectDir 'SourceAssets/LongBowMk2/LongBowMk2.glb'))) { continue }
         if (!(Test-Path -LiteralPath (Join-Path $projectDir "Content/Aircraft/$model/$model.uasset"))) { $model }
     }
@@ -68,6 +68,12 @@ if (MissingAircraftAssets) {
 
 if ($args -contains '--prepare') {
     Write-Host 'Projet compile et ressources pretes. Lancer avec Lancer-Unreal.cmd.'
+    exit 0
+}
+
+if ($args.Count -eq 0) {
+    # A double-click should leave only the simulator window on the desktop.
+    Start-Process -FilePath $editor -ArgumentList ('"{0}" -game' -f $project)
     exit 0
 }
 

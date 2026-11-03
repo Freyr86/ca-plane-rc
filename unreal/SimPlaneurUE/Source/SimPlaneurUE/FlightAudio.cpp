@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Sound/SoundWave.h"
+#include "Misc/ConfigCacheIni.h"
 
 namespace
 {
@@ -12,6 +13,8 @@ namespace
     constexpr auto WingAsset = TEXT("/Game/FlightAudio/WingRush.WingRush");
     constexpr auto MotorAsset = TEXT("/Game/FlightAudio/ElectricProp.ElectricProp");
     constexpr auto ServoAsset = TEXT("/Game/FlightAudio/ServoGear.ServoGear");
+    constexpr auto VarioAsset = TEXT("/Game/FlightAudio/VarioTone.VarioTone");
+    constexpr auto VarioSection = TEXT("SimPlaneur.Vario");
 
     struct FVoice { float Gain = 0.f, Pitch = 1.f; };
 
@@ -43,6 +46,21 @@ namespace
         const float Near = DistanceGain(Distance,2.5f);
         return {.22f*FMath::Sqrt(Motion)*Near*Near,.82f+.24f*Motion};
     }
+    FVoice VarioVoice(float Climb, float Upper, float Lower, float Dt, float& Phase)
+    {
+        if (Climb < Upper)
+        {
+            Phase = 0.f;
+            if (Climb <= Lower)
+                return {.14f,FMath::Max(.42f,.68f-.035f*(Lower-Climb))};
+            return {};
+        }
+        const float Lift = FMath::Clamp((Climb-Upper)/5.f,0.f,1.f);
+        const float Period = FMath::Lerp(.92f,.32f,Lift);
+        const bool Beep = Phase < .48f;
+        Phase = FMath::Fmod(Phase+Dt/Period,1.f);
+        return {Beep ? .17f : 0.f,1.f+.60f*Lift};
+    }
     void MixVoice(UAudioComponent* Source, FVoice Voice, float Fade=AudioInterval)
     {
         if (!Source) return;
@@ -61,8 +79,24 @@ namespace
     }
 }
 
+void ASlopeFlightPawn::SetVario(bool Enabled, float Climb, float Sink)
+{
+    bVarioEnabled = Enabled;
+    ClimbThreshold = FMath::Clamp(Climb,.1f,10.f);
+    SinkThreshold = FMath::Clamp(Sink,-10.f,-.1f);
+    GConfig->SetBool(VarioSection,TEXT("Enabled"),Enabled,GGameUserSettingsIni);
+    GConfig->SetFloat(VarioSection,TEXT("ClimbMps"),ClimbThreshold,GGameUserSettingsIni);
+    GConfig->SetFloat(VarioSection,TEXT("SinkMps"),SinkThreshold,GGameUserSettingsIni);
+    GConfig->Flush(false,GGameUserSettingsIni);
+}
+
 void ASlopeFlightPawn::PrepareFlightAudio()
 {
+    GConfig->GetBool(VarioSection,TEXT("Enabled"),bVarioEnabled,GGameUserSettingsIni);
+    GConfig->GetFloat(VarioSection,TEXT("ClimbMps"),ClimbThreshold,GGameUserSettingsIni);
+    GConfig->GetFloat(VarioSection,TEXT("SinkMps"),SinkThreshold,GGameUserSettingsIni);
+    ClimbThreshold = FMath::Clamp(ClimbThreshold,.1f,10.f);
+    SinkThreshold = FMath::Clamp(SinkThreshold,-10.f,-.1f);
     if (!GetWorld()->AllowAudioPlayback()) return;
     auto MakeSource = [this](const TCHAR* Path, bool Spatial)
     {
@@ -84,21 +118,36 @@ void ASlopeFlightPawn::PrepareFlightAudio()
     WingAudio = MakeSource(WingAsset,true);
     MotorAudio = MakeSource(MotorAsset,true);
     ServoAudio = MakeSource(ServoAsset,true);
+    VarioAudio = MakeSource(VarioAsset,false);
 }
 
 void ASlopeFlightPawn::UpdateFlightAudio(float DeltaSeconds)
 {
     AudioElapsed += DeltaSeconds;
     if (AudioElapsed < AudioInterval) return;
-    const float ServoSpeed = (Flight.TotalServoTravel()-LastServoTravel)/AudioElapsed;
+    const float Dt = AudioElapsed;
+    const float ServoSpeed = (Flight.TotalServoTravel()-LastServoTravel)/Dt;
     LastServoTravel = Flight.TotalServoTravel();
     AudioElapsed = 0.f;
     auto* PC = Cast<APlayerController>(GetController());
-    if (!PC || (!WindAudio && !WingAudio && !MotorAudio && !ServoAudio)) return;
+    if (!PC) return;
     FVector Eye;
     FRotator View;
     PC->GetPlayerViewPoint(Eye,View);
     const bool Flying = bModelReady && !bHeldForLaunch && !Flight.IsStopped() && !bMenuOpen && !bNoclip;
+    FVoice Vario;
+    if (Flying && bVarioEnabled)
+    {
+        // The onboard instrument reads the aircraft's vertical speed over ground.
+        FilteredClimb = FMath::Lerp(FilteredClimb,float(-Flight.SinkRate()),1.f-FMath::Exp(-Dt/.35f));
+        Vario = VarioVoice(FilteredClimb,ClimbThreshold,SinkThreshold,Dt,VarioPhase);
+    }
+    else
+    {
+        FilteredClimb = 0.f;
+        VarioPhase = 0.f;
+    }
+    MixVoice(VarioAudio,Vario,.012f);
     const bool Following = Flying && FlightView != EFlightView::Ground;
     const FVector EarNED(Eye.X*.01,Eye.Y*.01,-Eye.Z*.01);
     const float WindSpeed = Following ? Flight.Airspeed() :
@@ -128,12 +177,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightAudioTest,"SimPlaneur.Audio.FlightMix",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FFlightAudioTest::RunTest(const FString&)
 {
-    for (const TCHAR* Path : {WindAsset,WingAsset,MotorAsset,ServoAsset})
+    for (const TCHAR* Path : {WindAsset,WingAsset,MotorAsset,ServoAsset,VarioAsset})
     {
         const auto* Loop = LoadObject<USoundWave>(nullptr,Path);
         TestTrue(Path,Loop && Loop->bLooping && Loop->NumChannels==1 && Loop->Duration>=1.9f);
     }
     TestTrue(TEXT("Wind rises from calm to gust"),WindVoice(0).Gain==0 && WindVoice(4).Gain<WindVoice(10).Gain);
+    float Phase = 0.f;
+    const FVoice Climb = VarioVoice(.3f,.3f,-2.f,.5f,Phase);
+    TestTrue(TEXT("Climb threshold starts a beep"),Climb.Gain>0.f);
+    TestTrue(TEXT("Climb beeps have silent gaps"),VarioVoice(.3f,.3f,-2.f,.1f,Phase).Gain==0.f);
+    TestTrue(TEXT("Raised climb threshold gives silence"),VarioVoice(.5f,.7f,-2.f,.1f,Phase).Gain==0.f);
+    TestTrue(TEXT("Ordinary sink is silent"),VarioVoice(-1.f,.3f,-2.f,.1f,Phase).Gain==0.f);
+    const FVoice Sink = VarioVoice(-2.f,.3f,-2.f,.1f,Phase);
+    TestTrue(TEXT("Sink threshold emits a lower continuous tone"),Sink.Gain>0.f && Sink.Pitch<Climb.Pitch
+        && VarioVoice(-2.f,.3f,-2.f,1.f,Phase).Gain==Sink.Gain);
     const FVoice Slow=WingVoice(8,3,8,1), Fast=WingVoice(24,3,8,1);
     TestTrue(TEXT("Fast pass is louder and higher"),Slow.Gain<Fast.Gain && Slow.Pitch<Fast.Pitch);
     TestTrue(TEXT("Wings recede"),WingVoice(24,3,100,1).Gain<.2f*Fast.Gain);

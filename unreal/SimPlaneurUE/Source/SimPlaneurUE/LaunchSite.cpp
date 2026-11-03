@@ -1,4 +1,5 @@
 #include "SlopeWorld.h"
+#include "Airfield.h"
 #include "SceneContact.h"
 #include "ValleyAir.h"
 #include "Components/StaticMeshComponent.h"
@@ -69,10 +70,19 @@ void ASlopeWorld::BuildLaunchSite()
 
     auto AddWindsock=[&](float MastX,float MastY)
     {
-        const float Ground=TerrainHeightCm(MastX,MastY);
+        // Anchor to the rendered terrain triangles, especially on the chalet's 25 m grid.
+        const FTransform& TerrainToWorld=Terrain->GetComponentTransform();
+        const FVector Above=TerrainToWorld.TransformPosition({MastX,MastY,1000000.});
+        const FVector Below=TerrainToWorld.TransformPosition({MastX,MastY,-1000000.});
+        FHitResult Hit;
+        if (!ensureMsgf(Terrain->LineTraceComponent(Hit,Above,Below,FCollisionQueryParams(SCENE_QUERY_STAT(WindsockFoot),true)),
+            TEXT("Missing terrain under windsock at %.0f, %.0f"),MastX,MastY)) return;
+        const double Ground=TerrainToWorld.InverseTransformPosition(Hit.ImpactPoint).Z;
+        const FVector Normal=TerrainToWorld.InverseTransformVectorNoScale(Hit.ImpactNormal).GetSafeNormal();
         const FVector Pivot=FVector(MastX,MastY,Ground+370);
         Part(Tube,{MastX,MastY,Ground+182},{6,6,376},Metal,TEXT("mast"));
-        Part(Tube,{MastX,MastY,Ground+4},{25,25,12},Metal,TEXT("mast"));
+        Part(Tube,FVector(MastX,MastY,Ground)+Normal*4,{25,25,12},Metal,TEXT("mast"))
+            ->SetRelativeRotation(FRotationMatrix::MakeFromZ(Normal).Rotator());
 
         auto* Windsock=NewObject<UProceduralMeshComponent>(this);
         Windsock->SetupAttachment(GetRootComponent());
@@ -109,6 +119,31 @@ void ASlopeWorld::BuildLaunchSite()
     };
     AddWindsock(PilotX+760,PilotY+270);
     AddWindsock(ChaletX+950,ChaletY+450);
+    // A compact timber equipment hut. The door and front window face the flight line.
+    const float Floor=TerrainHeightCm(Airfield::Hut.X,Airfield::Hut.Y);
+    auto* Boards=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Meadow/Lakeside/M_CabinBoards"));
+    auto* Roof=Paint({.073,.107,.104});
+    auto* Glass=Paint({.058,.17,.20});
+    auto HutPart=[&](double Along,double Front,double Z,FVector Size,UMaterialInterface* Material,double Pitch=0.)
+    {
+        const FVector2D P=Airfield::Point(Along,Airfield::HutSide-Front);
+        Part(Board,FVector(P,Floor+Z),Size,Material,TEXT("hut"))->SetRelativeRotation(FRotator(Pitch,45.,0.));
+    };
+    HutPart(0,0,3,{312,440,16},Frame);
+    HutPart(0,0,116,{300,430,214},Boards ? Boards : Timber[0]);
+    // Shed roof rises toward the door; close the wedge beneath it with timber courses.
+    for(int I=0;I<7;++I)
+        HutPart(0,11.+21.*I,226.+6.*I,{278.-42.*I,430,6},Boards ? Boards : Timber[0]);
+    HutPart(0,0,249,{352,474,12},Roof,8.);
+    HutPart(-107,151,107,{9,101,200},Frame);
+    HutPart(-107,157,105,{5,87,190},Timber[1]);
+    HutPart(-77,162,100,{5,5,12},Metal);
+    HutPart(70,152,146,{10,133,90},Frame);
+    HutPart(70,158,146,{4,121,78},Glass);
+    HutPart(70,161,146,{4,5,78},Timber[2]);
+    HutPart(70,161,105,{15,144,6},Timber[2]);
+    HutPart(-107,175,4,{47,120,9},Frame);
+    AddWindsock(Airfield::Sock.X,Airfield::Sock.Y);
     UpdateWindsock(0,0);
 }
 

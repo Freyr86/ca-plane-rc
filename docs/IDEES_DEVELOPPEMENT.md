@@ -1,26 +1,45 @@
-# Idées de développement possibles
+# Idées de développement restantes
 
-Carnet de brainstorming de Ça plane ! Les idées sont classées par thème. Leur ordre ne fixe aucune priorité de développement.
+Carnet de Ça plane ! · Mise à jour du 3 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
 
-| Thème | Idée | Maturité | Question à explorer |
-|---|---|---|---|
-| HUD et télémétrie | Écran radio virtuel alimenté par le simulateur. Le pilote place et redimensionne un ou plusieurs instruments, puis sauvegarde et verrouille sa disposition. | Faisabilité étudiée | Un altimètre et une courbe de vario sur 30 secondes restent-ils lisibles depuis la caméra sol ? |
-| Personnalisation | Widgets Lua partageables. Chaque script reçoit une zone de dessin et des mesures en lecture seule. | Faisabilité étudiée | Tester deux widgets à 10 Hz, mesurer le coût sur le PC de référence et vérifier qu’un script bloqué ne perturbe pas le pilotage. |
-| Compatibilité radio | Réutilisation de widgets EdgeTX de la TX16S dans le HUD. | À explorer | Choisir un widget réel et relever les capteurs, fonctions de dessin et événements nécessaires. |
-| Physique et essais en vol | Caler le K3600 sur des vols réels avec GPS, vario et sorties radio horodatées. | Faisabilité à vérifier sur un premier journal de vol | Estimer la polaire sur des planés stabilisés à plusieurs vitesses en air calme, puis rejouer les commandes et comparer sur un vol indépendant. Relever masse, centrage, mixages, cadence et décalage des capteurs. |
-| Audio | Musique du menu, ambiance locale, sons du modèle et télémétrie sonore. | Plan de référence disponible | Comparer à l’oreille un passage lent du Topy et un passage rapide du K3600. [Plan audio](PLAN_AUDIO.md) |
+## Vol et multijoueur
 
-Le vario graphique et le futur vario sonore pourraient partager la même mesure de vitesse verticale du modèle, positive en montée. Le retour de télémétrie vers la radio physique reste une piste distincte, mise de côté.
+- **Entraînement F3F.** Installer deux bases distantes de 100 m, chronométrer dix longueurs, signaler les passages valides par un bip et permettre de retenter la manche avec le même vent. Évaluer le VJX 2022 sur ce parcours avant de décider s’il faut un autre planeur.
+- **Départs au treuil et au sandow.** Simuler la mise en tension, la montée et le largage pour ces deux modes de lancement.
+- **Remorquage en solo.** Confier l’avion remorqueur à l’IA et laisser au pilote du planeur la commande de largage.
+- **Vol à plusieurs sur la pente.** Tester une session privée avec deux pilotes au sol, des trajectoires fluides et des ascendances partagées.
+- **Remorqueur piloté en multijoueur.** Un joueur pilote l’avion tracteur, l’autre le planeur. Synchroniser la tension du câble et le largage pour les deux pilotes.
 
+## Hangar et crédits
 
-### Physique — boîte noire du K3600
+- **Atelier de livrées.** Peindre l’extrados et l’intrados, poser bandes et motifs, faire tourner le planeur pour inspecter la déco, enregistrer plusieurs livrées par appareil et restaurer celle d’origine.
+- **Crédits par appareil.** Ajouter progressivement le créateur du modèle RC et l’auteur de la 3D. Vérifier les noms, les sources et les mentions de licence à afficher pour chaque appareil.
 
-Piste de développement. Un interrupteur de la TX16S démarre ou termine une séance en vol. Un bouton marque chaque manœuvre dans le journal continu. Un bip confirme le marqueur sans quitter le planeur des yeux.
+## Instruments et télémétrie
+
+- **Écran radio virtuel.** Placer, redimensionner et verrouiller plusieurs instruments dans le HUD, puis enregistrer leur disposition. Essayer un altimètre et un graphe des 30 dernières secondes de vario.
+- **Widgets Lua partageables.** Fournir aux scripts une zone de dessin et des mesures en lecture seule. Tester deux instruments à 10 Hz et vérifier qu’un script bloqué laisse le pilotage fluide.
+- **Compatibilité EdgeTX.** Essayer un widget réel de la TX16S sur l’écran virtuel et identifier les capteurs, les commandes de dessin et les événements dont il a besoin.
+
+## Audio
+
+- **Végétation.** Faire entendre l’herbe en prairie et le feuillage sous les arbres, avec une transition douce quand le pilote passe en lisière.
+- **Réglages de volume.** Proposer un volume général et des réglages indépendants pour la musique, l’ambiance, le planeur et la télémétrie.
+- **Alerte de batterie.** La relier à une future simulation de consommation électrique, avec un seuil et des rappels espacés. [Plan audio](PLAN_AUDIO.md)
+
+## Idées mises de côté
+
+- **Musique du menu et playlist locale.** Prévoir une boucle douce, puis la possibilité de lire ses propres fichiers audio.
+- **Retour de télémétrie vers la TX16S physique.** Transmettre les mesures par USB pour alimenter notamment le vario de la radio.
+
+## Essais réels du K3600
+
+**Boîte noire transférable.** Un interrupteur de la TX16S démarre ou termine une séance en vol. Un bouton marque chaque manœuvre dans le journal continu. Un bip confirme le marqueur sans quitter le planeur des yeux.
 
 - **Radio** — journaliser les commandes après mixage, le mode de vol, les trims disponibles, le GPS et le vario. Vérifier sur la radio les champs effectivement enregistrés.
 - **À bord** — si une centrale inertielle est ajoutée, conserver les trois vitesses de rotation, trois accélérations et trois composantes du champ magnétique avec leur heure d’acquisition. Enregistrer aussi les voies reçues ou un canal marqueur pour synchroniser les horloges. Tester cadence réelle, pertes, orientation et calibration au sol.
 - **Analyse sur PC** — découper les passages par marqueur. Tracer commande et réponse sur le même axe de temps : ailerons/roulis, direction/lacet et roulis induit, profondeur/tangage et vario. Pour les planés stabilisés, tracer taux de chute en fonction de la vitesse et préciser si elle est mesurée dans l’air ou au sol.
-- **Validation** — superposer réel et simulation, comparer délai, pic, couplage et amortissement. Garder un vol indépendant pour vérifier les paramètres ajustés.
+- **Calage du modèle de vol du K3600** — relever masse, centrage et mixages, estimer la polaire sur des planés stabilisés à plusieurs vitesses en air calme, puis rejouer les commandes. Superposer réel et simulation, comparer délai, pic, couplage et amortissement. Garder un vol indépendant pour vérifier les paramètres ajustés.
 
 Premier jalon : un enregistrement sur table avec un mouvement connu par axe et plusieurs marqueurs, avant de choisir entre journal radio seul et enregistreur embarqué.
 

@@ -1,0 +1,9 @@
+APUS 4
+
+Planeur original et photographies de référence : FEMO Modell- und Faserverbundtechnik.
+Galerie du constructeur : https://www.femo-design.de/flugsport/archiv/apus/
+Notice de réglage : https://www.femo-design.de/service/
+
+Le maillage et la livrée verte ont été redessinés pour le simulateur à partir des vues du constructeur et des photographies de propriétaires.
+Référence pour le décor du dessus et du dessous : Daniel (« Volcom- »), RC-Network.
+https://www.rc-network.de/threads/apus-femo-design-montage-und-erfahrungsbericht.450999/page-2#post-5390107

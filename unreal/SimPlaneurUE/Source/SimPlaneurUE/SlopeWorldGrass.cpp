@@ -1,4 +1,5 @@
 #include "SlopeWorld.h"
+#include "Airfield.h"
 #include "ValleyLandscape.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -150,9 +151,13 @@ void ASlopeWorld::PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail)
                 const float X=Base.X+(I+Random.FRand())*TileSize/Count;
                 const float Y=Base.Y+(J+Random.FRand())*TileSize/Count;
                 const float FromPilot=FVector2D(X-PilotX,Y-PilotY).Size();
+                const FVector2D Field=Airfield::Local(X,Y);
+                const bool ByStrip=FMath::Abs(Field.X)<Airfield::HalfLength+900. && FMath::Abs(Field.Y)<Airfield::HutSide+750.;
+                const bool Mown=FMath::Abs(Field.X)<Airfield::HalfLength && FMath::Abs(Field.Y)<Airfield::HalfWidth;
+                if (FMath::Abs(Field.X)<230. && FMath::Abs(Field.Y-Airfield::HutSide)<200.) continue;
                 if (Detail)
                 {
-                    if (X< -135000 || X>65000 || Y< -75000 || Y>125000) continue;
+                    if (!ByStrip && (X< -135000 || X>65000 || Y< -75000 || Y>125000)) continue;
                     const float Existing=FromPilot<4100 ? FMath::Square(1350.f/FMath::Max(1350.f,FromPilot)) : 0.f;
                     if (Random.FRand()<Existing) continue;
                 }
@@ -161,14 +166,14 @@ void ASlopeWorld::PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail)
                 FVector Root=RootAt(X,Y,Normal);
                 if (Root.Z<Valley::WaterLevel+60 || Normal.Z<.75f) continue;
                 const bool InLake=X>=-135000 && X<=65000 && Y>=-75000 && Y<=125000;
-                const float Shade=InLake ? CrownCover(X,Y) : (Valley::Woodland(X,Y)>.61f ? .82f : 0.f);
+                const float Shade=ByStrip ? 0.f : InLake ? CrownCover(X,Y) : (Valley::Woodland(X,Y)>.61f ? .82f : 0.f);
                 if (Random.FRand()<Shade*.85f) continue;
                 const float A=Random.FRand()*2*PI;
                 const FQuat Rot=FRotationMatrix::MakeFromZX(Normal,FVector(FMath::Cos(A),FMath::Sin(A),0)).ToQuat();
                 const float Variety=Random.FRand();
-                const int32 Kind=Shade>.45f ? 2 : Variety<.18f ? 1 : (Variety<.48f ? 2 : 0);
+                const int32 Kind=Mown || Shade>.45f ? 2 : Variety<.18f ? 1 : (Variety<.48f ? 2 : 0);
                 const float Size=Random.FRandRange(.78f,1.23f);
-                Tufts[Kind].Emplace(Rot,Root,FVector(Size,Size,Random.FRandRange(.66f,1.04f)*(1.f-.48f*Shade)));
+                Tufts[Kind].Emplace(Rot,Root,FVector(Size,Size,Random.FRandRange(.66f,1.04f)*(Mown ? .10f : 1.f-.48f*Shade)));
             }
     }
     for (int32 K=0;K<Species;++K)

@@ -96,6 +96,7 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
     Json->TryGetNumberField(TEXT("discus_launch_pitch_trim"),M.LaunchPitchTrim);
     Json->TryGetNumberField(TEXT("spoiler_drag_coefficient"),M.SpoilerDrag);
     Json->TryGetBoolField(TEXT("conventional_tail"), M.ConventionalTail);
+    Json->TryGetBoolField(TEXT("fixed_fin"), M.FixedFin);
     Json->TryGetNumberField(TEXT("aileron_roll_coefficient"), M.AileronEffect);
     if (Json->HasField(TEXT("flaps")))
     {
@@ -263,6 +264,7 @@ void FGliderDynamics::AdvanceServos(double Elevator,double Rudder,double Aileron
 {
     // Aircraft command convention: positive elevator deflects down; positive
     // rudder input here is the same tail command used in the reference polar model.
+    if (!HasRudder()) Rudder = 0.;
     const double MaxTravel = ServoRate * DeltaSeconds;
     const auto MoveServo = [MaxTravel](double Current, double Requested)
     {

@@ -65,9 +65,10 @@ def create_project_materials():
         )
         material_library.recompile_material(solid)
         library.save_loaded_asset(solid)
-    solid.set_editor_property("used_with_instanced_static_meshes", True)
-    material_library.recompile_material(solid)
-    library.save_loaded_asset(solid)
+    if not solid.get_editor_property("used_with_instanced_static_meshes"):
+        solid.set_editor_property("used_with_instanced_static_meshes", True)
+        material_library.recompile_material(solid)
+        library.save_loaded_asset(solid)
 
 
 def canopy_glazing(destination, name):
@@ -196,7 +197,7 @@ for prefix in ("Topy", "K3600"):
 
 
 # Each source has a single mesh and embedded paint. Dimensions are in centimetres.
-for model, source, span, length in (("VJX2022","VJX",293.,135.5), ("Fox7mEffile","Fox",700.,369.), ("JS3_9m","JS3",900.,347.), ("Snipe2","Snipe2",149.,108.1), ("LongBowMk2","LongBowMk2",215.5,59.3)):
+for model, source, span, length in (("VJX2022","VJX",293.,135.5), ("Fox7mEffile","Fox",700.,369.), ("JS3_9m","JS3",900.,347.), ("Snipe2","Snipe2",149.,108.1), ("LongBowMk2","LongBowMk2",215.5,59.3), ("Apus4","Apus4",135.,99.), ("Nubis","Nubis",595.,221.)):
     destination = f"{folder}/{model}"
     asset_path = f"{destination}/{model}"
     if assets.does_asset_exist(asset_path):
@@ -216,6 +217,16 @@ for model, source, span, length in (("VJX2022","VJX",293.,135.5), ("Fox7mEffile"
     size = mesh.get_bounding_box().max - mesh.get_bounding_box().min
     assert abs(size.y - span) < .2 and abs(size.x - length) < .2, size
     assert mesh.get_material(0)
+    if model == "Nubis":
+        subsystem = unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem)
+        lods = unreal.StaticMeshReductionOptions()
+        lods.auto_compute_lod_screen_size = False
+        lods.reduction_settings = [
+            unreal.StaticMeshReductionSettings(percent_triangles=fraction, screen_size=size)
+            for fraction, size in ((1., 1.), (.35, .22), (.08, .065))
+        ]
+        subsystem.set_lods(mesh, lods)
+        assert subsystem.get_lod_count(mesh) == 3 and mesh.get_num_sections(0) == 1
     if model in ("Fox7mEffile","JS3_9m"):
         assert mesh.get_num_sections(0) == 2 and mesh.get_material(1), "Missing canopy section"
         glass_slot = next(i for i in range(2) if "Verriere" in mesh.get_material(i).get_name())

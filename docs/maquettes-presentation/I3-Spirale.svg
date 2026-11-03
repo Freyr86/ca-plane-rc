@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <title>Ça plane ! — La spirale</title>
+  <circle cx="64" cy="64" r="61" fill="#e9674e"/>
+  <path fill="none" stroke="#f8ce83" stroke-width="3.5" stroke-linecap="round"
+        d="M114 56c-3-27-32-46-59-41C27 19 10 44 14 71c4 28 32 46 58 40 22-4 35-25 31-44-3-15-19-28-34-25"/>
+  <path fill="#144749" transform="rotate(-29 64 65) translate(0 4)" d="M64 17c-4 1-5 12-5 22l-.5 5L18 54 5 62l52-5 3 29-14 8-2 5 19-5 19 5-2-5-14-8 4-29 52 5-13-8-41-10-.5-5c0-10 0-21-3-22Z"/>
+  <path fill="#fff0cf" transform="rotate(-29 64 65)" d="M64 17c-4 1-5 12-5 22l-.5 5L18 54 5 62l52-5 3 29-14 8-2 5 19-5 19 5-2-5-14-8 4-29 52 5-13-8-41-10-.5-5c0-10 0-21-3-22Z"/>
+  <path fill="#144749" transform="rotate(-29 64 65)" d="M62 29q2-6 4 0v10q-2 4-4 0Z"/>
+</svg>

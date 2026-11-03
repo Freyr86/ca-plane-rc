@@ -2,7 +2,7 @@
   #error GameDir must point to the packaged Windows directory
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.2"
+  #define AppVersion "0.5.3"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\work\release"
@@ -25,6 +25,7 @@ OutputBaseFilename=CaPlaneRC-{#AppVersion}-Windows-Setup
 Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\unreal\SimPlaneurUE\Build\Windows\Application.ico
 UninstallDisplayIcon={app}\SimPlaneurUE.exe
 DisableProgramGroupPage=yes
 SetupLogging=yes
