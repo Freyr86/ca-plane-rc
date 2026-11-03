@@ -410,13 +410,14 @@ void SFlightMenu::Hangar(SVerticalBox& List)
     }),6);
     Add(List,Live([this]{
         if (!Plane->IsAppearanceReady()) return FString(TEXT("Chargement du planeur…"));
-        if (Plane->ModelIndex()==6) return FString(TEXT("07 / 07   ·   2,155 m   ·   Aile volante à élevons"));
-        if (Plane->ModelIndex()==5) return FString(TEXT("06 / 07   ·   1,49 m   ·   F3K · lancer disque"));
-        if (Plane->ModelIndex()==4) return FString(TEXT("05 / 07   ·   9,00 m   ·   Vol de distance"));
-        if (Plane->ModelIndex()==3) return FString(TEXT("04 / 07   ·   7,00 m   ·   Voltige · lancer assisté"));
-        if (Plane->ModelIndex()==2) return FString(TEXT("03 / 07   ·   2,93 m   ·   F3F   ·   vol expérimental"));
-        return FString(Plane->ModelIndex() == 0 ? TEXT("01 / 07   ·   1,19 m   ·   2 axes") :
-            TEXT("02 / 07   ·   3,60 × 1,77 m   ·   79,1 dm²"));
+        const FString Ordinal = Plane->ModelNumber() + TEXT("   ·   ");
+        if (Plane->ModelIndex()==6) return Ordinal + TEXT("2,155 m   ·   Aile volante à élevons");
+        if (Plane->ModelIndex()==5) return Ordinal + TEXT("1,49 m   ·   F3K · lancer disque");
+        if (Plane->ModelIndex()==4) return Ordinal + TEXT("9,00 m   ·   Vol de distance");
+        if (Plane->ModelIndex()==3) return Ordinal + TEXT("7,00 m   ·   Voltige · lancer assisté");
+        if (Plane->ModelIndex()==2) return Ordinal + TEXT("2,93 m   ·   F3F   ·   vol expérimental");
+        return Ordinal + (Plane->ModelIndex() == 0 ? TEXT("1,19 m   ·   2 axes") :
+            TEXT("3,60 × 1,77 m   ·   79,1 dm²"));
     },12,Light),12);
     if (!Plane->CanSelectModel()) { Add(List,Text(TEXT("Modèle indisponible"),12,Gold)); return; }
     Add(List,SNew(SHorizontalBox)

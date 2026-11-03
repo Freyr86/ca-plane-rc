@@ -301,6 +301,18 @@ void ASlopeFlightPawn::BuildWingSection()
 
 const TCHAR* ASlopeFlightPawn::ModelName() const { return Aircraft[PreviewModel].Name; }
 
+FString ASlopeFlightPawn::ModelNumber() const
+{
+    int32 Position = 0, Total = 0;
+    for (int32 I = 0; I < UE_ARRAY_COUNT(Aircraft); ++I)
+    {
+        if (!AvailableModels[I]) continue;
+        ++Total;
+        if (I <= PreviewModel) ++Position;
+    }
+    return FString::Printf(TEXT("%02d / %02d"), Position, Total);
+}
+
 bool ASlopeFlightPawn::IsControlInUse(EGliderControl Control) const
 {
     using A = EGliderControl;
@@ -321,7 +333,11 @@ bool ASlopeFlightPawn::IsControlInUse(EGliderControl Control) const
 
 void ASlopeFlightPawn::BrowseModel(int32 Step)
 {
-    PreviewModel = (PreviewModel + Step + UE_ARRAY_COUNT(Aircraft)) % UE_ARRAY_COUNT(Aircraft);
+    for (int32 I = 0; I < UE_ARRAY_COUNT(Aircraft); ++I)
+    {
+        PreviewModel = (PreviewModel + Step + UE_ARRAY_COUNT(Aircraft)) % UE_ARRAY_COUNT(Aircraft);
+        if (AvailableModels[PreviewModel]) break;
+    }
     BuildFallbackTopy();
 }
 

@@ -47,6 +47,7 @@ public:
     FGliderLoading StandardLoading() const { return HangarModels[PreviewModel].StandardLoading(); }
     FGliderLoading LimitLoading(FGliderLoading Setting) const { return HangarModels[PreviewModel].LimitLoading(Setting); }
     const TCHAR* ModelName() const;
+    FString ModelNumber() const;
     int32 ModelIndex() const { return PreviewModel; }
     bool CanSelectModel() const { return AvailableModels[PreviewModel]; }
     bool UsesAileronSteering() const { return AileronSteering[PreviewModel]; }

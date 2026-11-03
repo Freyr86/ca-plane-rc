@@ -52,6 +52,7 @@ if ($args -contains '--test-physics') {
 
 function MissingAircraftAssets {
     foreach ($model in "VJX2022","Fox7mEffile","JS3_9m","Snipe2","LongBowMk2") {
+        if ($model -eq 'LongBowMk2' -and !(Test-Path -LiteralPath (Join-Path $projectDir 'SourceAssets/LongBowMk2/LongBowMk2.glb'))) { continue }
         if (!(Test-Path -LiteralPath (Join-Path $projectDir "Content/Aircraft/$model/$model.uasset"))) { $model }
     }
     foreach ($prefix in 'Topy','K3600') {

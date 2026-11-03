@@ -201,8 +201,11 @@ for model, source, span, length in (("VJX2022","VJX",293.,135.5), ("Fox7mEffile"
     asset_path = f"{destination}/{model}"
     if assets.does_asset_exist(asset_path):
         continue
+    model_file = project_dir / "SourceAssets" / source / f"{model}.glb"
+    if model == "LongBowMk2" and not model_file.is_file():
+        continue
     task = unreal.AssetImportTask()
-    task.filename = str(project_dir / "SourceAssets" / source / f"{model}.glb")
+    task.filename = str(model_file)
     task.destination_path = destination
     task.automated = task.save = True
     tools.import_asset_tasks([task])
