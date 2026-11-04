@@ -4,11 +4,21 @@ Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++
 
 ![La prairie du lac](reports/unreal_prototype/vallee-3d-sol.jpg)
 
-### Le hangar en images
+### Les planeurs
 
-| MDM-1 Fox · 7 m | Jonker JS-3 · 9 m | Snipe 2 · 1,49 m |
-| --- | --- | --- |
-| [![MDM-1 Fox](reports/unreal_prototype/galerie/fox.jpg)](reports/unreal_prototype/galerie/fox.jpg) | [![Jonker JS-3](reports/unreal_prototype/galerie/js3.jpg)](reports/unreal_prototype/galerie/js3.jpg) | [![Snipe 2](reports/unreal_prototype/galerie/snipe.jpg)](reports/unreal_prototype/galerie/snipe.jpg) |
+| MDM-1 Fox · 7 m | Jonker JS-3 · 9 m |
+| --- | --- |
+| [![MDM-1 Fox en vol](reports/unreal_prototype/galerie/fox.jpg)](reports/unreal_prototype/galerie/fox.jpg) | [![Jonker JS-3 en vol](reports/unreal_prototype/galerie/js3.jpg)](reports/unreal_prototype/galerie/js3.jpg) |
+| **Snipe 2 · 1,49 m** | **Flight-Composites Nubis · 5,95 m** |
+| [![Snipe 2 en vol](reports/unreal_prototype/galerie/snipe.jpg)](reports/unreal_prototype/galerie/snipe.jpg) | [![Nubis dans le hangar](reports/unreal_prototype/galerie/nubis-hangar.png)](reports/unreal_prototype/galerie/nubis-hangar.png) |
+
+### Du hangar au terrain
+
+Choisissez votre planeur et votre site depuis le menu animé, puis retrouvez la vallée alpine et sa piste en herbe. Cliquez sur une capture pour l’agrandir.
+
+| Menu d’accueil avec le Nubis | Piste en herbe du troisième site |
+| --- | --- |
+| [![Menu d’accueil de Ça plane !](reports/unreal_prototype/galerie/nubis-accueil.png)](reports/unreal_prototype/galerie/nubis-accueil.png) | [![Piste en herbe dans la vallée alpine](reports/unreal_prototype/galerie/site-03-piste.png)](reports/unreal_prototype/galerie/site-03-piste.png) |
 
 ## Jouer
 
