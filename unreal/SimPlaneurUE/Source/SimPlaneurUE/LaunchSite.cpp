@@ -1,5 +1,6 @@
 #include "SlopeWorld.h"
 #include "Airfield.h"
+#include "CirqueSite.h"
 #include "SceneContact.h"
 #include "ValleyAir.h"
 #include "Components/StaticMeshComponent.h"
@@ -68,23 +69,33 @@ void ASlopeWorld::BuildLaunchSite()
     for (int I=0;I<3;++I)
         Plank(BenchPoint(-12,0,Seat+22+I*12),{4,185,10},Timber[(I+1)%3]);
 
-    auto AddWindsock=[&](float MastX,float MastY)
+    auto AddWindsock=[&](float MastX,float MastY,bool AtCirque=false)
     {
         // Anchor to the rendered terrain triangles, especially on the chalet's 25 m grid.
         const FTransform& TerrainToWorld=Terrain->GetComponentTransform();
         const FVector Above=TerrainToWorld.TransformPosition({MastX,MastY,1000000.});
         const FVector Below=TerrainToWorld.TransformPosition({MastX,MastY,-1000000.});
         FHitResult Hit;
-        if (!ensureMsgf(Terrain->LineTraceComponent(Hit,Above,Below,FCollisionQueryParams(SCENE_QUERY_STAT(WindsockFoot),true)),
+        bool Found=false;
+        for(auto* Item:GetComponentsByTag(UPrimitiveComponent::StaticClass(),TEXT("ground")))
+        {
+            auto* GroundMesh=CastChecked<UPrimitiveComponent>(Item);
+            FHitResult Candidate;
+            if(GroundMesh->LineTraceComponent(Candidate,Above,Below,FCollisionQueryParams(SCENE_QUERY_STAT(WindsockFoot),true))
+                && (!Found || Candidate.Time<Hit.Time)) { Hit=Candidate; Found=true; }
+        }
+        if (!ensureMsgf(Found,
             TEXT("Missing terrain under windsock at %.0f, %.0f"),MastX,MastY)) return;
         const double Ground=TerrainToWorld.InverseTransformPosition(Hit.ImpactPoint).Z;
         const FVector Normal=TerrainToWorld.InverseTransformVectorNoScale(Hit.ImpactNormal).GetSafeNormal();
         const FVector Pivot=FVector(MastX,MastY,Ground+370);
-        Part(Tube,{MastX,MastY,Ground+182},{6,6,376},Metal,TEXT("mast"));
-        Part(Tube,FVector(MastX,MastY,Ground)+Normal*4,{25,25,12},Metal,TEXT("mast"))
-            ->SetRelativeRotation(FRotationMatrix::MakeFromZ(Normal).Rotator());
+        auto* Pole=Part(Tube,{MastX,MastY,Ground+182},{6,6,376},Metal,TEXT("mast"));
+        auto* Foot=Part(Tube,FVector(MastX,MastY,Ground)+Normal*4,{25,25,12},Metal,TEXT("mast"));
+        Foot->SetRelativeRotation(FRotationMatrix::MakeFromZ(Normal).Rotator());
+        if(AtCirque) { Pole->ComponentTags.Add(TEXT("CirqueWindsockMast")); Foot->ComponentTags.Add(TEXT("CirqueWindsockMast")); }
 
         auto* Windsock=NewObject<UProceduralMeshComponent>(this);
+        if(AtCirque) Windsock->ComponentTags.Add(TEXT("CirqueWindsock"));
         Windsock->SetupAttachment(GetRootComponent());
         Windsock->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Windsock->SetCanEverAffectNavigation(false);
@@ -144,6 +155,8 @@ void ASlopeWorld::BuildLaunchSite()
     HutPart(70,161,105,{15,144,6},Timber[2]);
     HutPart(-107,175,4,{47,120,9},Frame);
     AddWindsock(Airfield::Sock.X,Airfield::Sock.Y);
+    BuildCirqueFurniture();
+    AddWindsock(CirqueSite::Sock.X,CirqueSite::Sock.Y,true);
     UpdateWindsock(0,0);
 }
 

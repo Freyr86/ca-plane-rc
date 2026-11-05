@@ -37,7 +37,7 @@ struct FGliderDynamics
     static FString TopyModelPath();
     void Reset(FVector WindNED=FVector(-2,0,0));
     void Step(double Elevator,double Rudder);
-    void Step(double Elevator,double Rudder,double Aileron,double Throttle=0.);
+    void Step(double Elevator,double Rudder,double Aileron,double Throttle=0., const FVector& TowForceNED=FVector::ZeroVector);
     FGliderMotor MotorSettings() const { return Motor; }
     double MotorPowerWatts() const { return AppliedMotorWatts; }
     void SetMotor(FGliderMotor Value) { Motor={Value.Enabled,FMath::Clamp(Value.Watts,1,FGliderMotor::MaxWatts)}; }
@@ -80,6 +80,9 @@ struct FGliderDynamics
     FVector RightTipOffsetNED() const { return Attitude.GetRightVector() * (.5 * Span); }
     const FVector& LocalWind() const { return Wind; }
     const FVector& PositionNED() const { return Position; }
+    const FVector& VelocityNED() const { return Velocity; }
+    double ImpactTolerance() const { return FMath::Sqrt(ImpactResistance*StandardMass/FMath::Max(.01,Mass)); }
+    FVector AngularVelocityWorld() const { const FVector N=Attitude.RotateVector(Omega); return FVector(-N.X,-N.Y,N.Z); }
     FVector RelativeFlowNED() const { return Wind - Velocity; }
     FTransform WorldPose() const;
     void StopAt(const FTransform& Contact);
@@ -101,6 +104,7 @@ private:
     FVector Inertia=FVector::ZeroVector;
     FVector StandardInertia = FVector::ZeroVector;
     double StandardMass = 0., CgShift = 0.;
+    double ImpactResistance = 1.;
     int32 ReferenceCgMm = 0;
     FMoment Roll,Pitch,Yaw;
     double ExtraDownElevatorMoment = 0.;

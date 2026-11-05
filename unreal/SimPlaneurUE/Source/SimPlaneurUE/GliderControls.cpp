@@ -20,11 +20,11 @@ namespace
         {TEXT("Pylon"),TEXT("Pylône rétractable"),G::Motor,T::Switch,false},
         {TEXT("Gear"),TEXT("Train rentrant"),G::Equipment,T::Switch,false},
         {TEXT("WheelBrake"),TEXT("Frein de roue"),G::Equipment,T::Range,false},
-        {TEXT("TowRelease"),TEXT("Largage du crochet"),G::Equipment,T::Pulse,false},
+        {TEXT("TowRelease"),TEXT("Largage du crochet"),G::Equipment,T::Pulse,true,TEXT("E")},
         {TEXT("Ballast"),TEXT("Vidange du ballast"),G::Equipment,T::Switch,false},
-        {TEXT("Relaunch"),TEXT("Remettre le planeur en main"),G::Simulator,T::Pulse,true,TEXT("R")},
-        {TEXT("Camera"),TEXT("Changer de caméra"),G::Simulator,T::Pulse,true,TEXT("C")},
-        {TEXT("Instruments"),TEXT("Afficher les instruments"),G::Simulator,T::Pulse,true,TEXT("H")},
+        {TEXT("Relaunch"),TEXT("Récupérer le planeur"),G::Simulator,T::Pulse,true,TEXT("F8")},
+        {TEXT("Camera"),TEXT("Changer de caméra"),G::Simulator,T::Pulse,true,TEXT("F7")},
+        {TEXT("Instruments"),TEXT("Afficher les instruments"),G::Simulator,T::Pulse,true}, // retained for developer diagnostics
         {TEXT("Menu"),TEXT("Ouvrir le menu"),G::Simulator,T::Pulse,true},
         {TEXT("Meadow"),TEXT("Observer la prairie"),G::Simulator,T::Pulse,true,TEXT("V")},
         {TEXT("Sidestep"),TEXT("Déplacer le pilote"),G::Simulator,T::Signed,true,TEXT("L"),TEXT("J")},
@@ -32,10 +32,14 @@ namespace
         {TEXT("Aux2"),TEXT("Voie auxiliaire 2"),G::Aux,T::Signed,false},
         {TEXT("Aux3"),TEXT("Voie auxiliaire 3"),G::Aux,T::Signed,false},
         {TEXT("Aux4"),TEXT("Voie auxiliaire 4"),G::Aux,T::Signed,false},
-        {TEXT("WindTrails"),TEXT("Afficher les filets d’air"),G::Simulator,T::Pulse,true,TEXT("F")},
+        {TEXT("WindTrails"),TEXT("Afficher les filets d’air"),G::Simulator,T::Pulse,true,TEXT("F5")},
         {TEXT("HandLaunch"),TEXT("Lancer à la main"),G::Simulator,T::Pulse,true,TEXT("SpaceBar")},
-        {TEXT("Noclip"),TEXT("Explorer en noclip"),G::Simulator,T::Pulse,true,TEXT("N")},
-        {TEXT("Vario"),TEXT("Activer le vario sonore"),G::Equipment,T::Pulse,true,TEXT("K")}
+        {TEXT("Noclip"),TEXT("Explorer en noclip"),G::Simulator,T::Pulse,true,TEXT("F12")},
+        {TEXT("Vario"),TEXT("Activer le vario sonore"),G::Equipment,T::Pulse,true,TEXT("F6")},
+        {TEXT("Backpack"),TEXT("Ranger / récupérer le planeur"),G::Simulator,T::Pulse,true,TEXT("F3")},
+        {TEXT("Equipment"),TEXT("Sélectionner l’élastique"),G::Simulator,T::Pulse,true,TEXT("F4")},
+        {TEXT("Winch"),TEXT("Sélectionner le treuil"),G::Simulator,T::Pulse,true,TEXT("F1")},
+        {TEXT("WinchPower"),TEXT("Puissance du treuil (optionnelle)"),G::Equipment,T::Range,true}
     };
     static_assert(UE_ARRAY_COUNT(Controls)==ControlCount);
 }

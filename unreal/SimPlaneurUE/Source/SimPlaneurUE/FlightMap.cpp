@@ -1,5 +1,7 @@
 #include "FlightMap.h"
 #include "Airfield.h"
+#include "CirqueLandscape.h"
+#include "CirqueSite.h"
 #include "SlopeFlightPawn.h"
 #include "SlopeWorld.h"
 #include "Misc/Paths.h"
@@ -118,12 +120,26 @@ int32 SFlightMap::OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&
         Box(3,{0,V},{Size.X,1},White,Grid);
         if(V>18){Box(4,{2,V},{61,16},White,Dark);Label(5,{4,V},FString::Printf(TEXT("X %+.0f"),X),FLinearColor::White);}
     }
+    TArray<FBox2D> Labels;
     auto Mark=[&](FVector2D World,const TCHAR* Name,FLinearColor Color,float Offset){
         const FVector2f P=Px(World.X,World.Y);
+        if(P.X<0 || P.Y<0 || P.X>Size.X || P.Y>Size.Y) return;
         Box(6,P-FVector2f(4),FVector2f(8),White,Dark);
         Box(7,P-FVector2f(2.5f),FVector2f(5),White,Color);
-        Box(6,P+FVector2f(6,Offset),{80,16},White,Dark);
-        Label(7,P+FVector2f(9,Offset),Name,Color);
+        const float Width=FMath::Max(80.f,FCString::Strlen(Name)*6.f+12.f);
+        FVector2f TextPos(FMath::Clamp(P.X+6.f,7.f,Size.X-Width-7.f),0);
+        for(int Trial=0;Trial<15;++Trial)
+        {
+            const float Shift=Trial==0?0.f:((Trial+1)/2)*20.f*(Trial%2?1.f:-1.f);
+            TextPos.Y=FMath::Clamp(P.Y+Offset+Shift,20.f,Size.Y-48.f);
+            const FBox2D Bounds(FVector2D(TextPos)-FVector2D(2),FVector2D(TextPos)+FVector2D(Width+2,18));
+            if(Labels.ContainsByPredicate([&](const auto& R){return R.Intersect(Bounds);}) && Trial<14) continue;
+            Labels.Add(Bounds); break;
+        }
+        if(FMath::Abs(TextPos.Y-P.Y)>20.f)
+            FSlateDrawElement::MakeLines(Draw,L+6,G.ToPaintGeometry(),{P,TextPos+FVector2f(0,8)},ESlateDrawEffect::None,Color,true,1.f);
+        Box(6,TextPos,{Width,16},White,Dark);
+        Label(7,TextPos+FVector2f(3,0),Name,Color);
     };
     Mark({ASlopeWorld::PilotX*.01,ASlopeWorld::PilotY*.01},TEXT("01  Prairie"),FLinearColor(1,.80f,.36f),-18);
     Mark({ASlopeWorld::ChaletX*.01,ASlopeWorld::ChaletY*.01},TEXT("02  Chalet"),FLinearColor(1,.80f,.36f),-18);
@@ -131,9 +147,28 @@ int32 SFlightMap::OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&
     FSlateDrawElement::MakeLines(Draw,L+5,G.ToPaintGeometry(),{Px(NW.X,NW.Y),Px(SE.X,SE.Y)},ESlateDrawEffect::None,
         FLinearColor(.45f,.70f,.28f),true,FMath::Max(2.f,float(2*Airfield::HalfWidth*.01*Scale)));
     Mark(Airfield::Centre*.01,TEXT("03  Piste"),FLinearColor(1,.80f,.36f),-18);
+    Mark({Cirque::CenterX*.01,Cirque::CenterY*.01},TEXT("Cirque des falaises"),FLinearColor(.91f,.88f,.72f),-18);
+    Mark(CirqueSite::Pilot*.01,TEXT("04  Belvédère du cirque"),FLinearColor(1,.80f,.36f),-18);
+    int32 Bungees=0,Winches=0;
+    for(const auto& E:Plane->InstalledEquipment())
+    {
+        const bool Bungee=E.Type==ELaunchEquipment::Bungee;
+        if(Bungee) ++Bungees; else ++Winches;
+        const FVector2D A(E.Anchor*.01),D(E.Departure*.01);
+        const FVector2f AP=Px(A.X,A.Y),DP=Px(D.X,D.Y);
+        const FLinearColor Colour=ASlopeFlightPawn::EquipmentColour(E.Colour);
+        FSlateDrawElement::MakeLines(Draw,L+5,G.ToPaintGeometry(),{AP,DP},ESlateDrawEffect::None,Colour,true,2.f);
+        const FString Name=FString::Printf(TEXT("%s #%d"),Bungee?TEXT("Élastique"):TEXT("Treuil"),E.Id);
+        Mark(A,*Name,Colour,-18);
+        // Distinct endpoints become readable as the map is zoomed in.
+        if((AP-DP).Size()>26.f) Mark(D,TEXT("Départ"),FLinearColor(.5f,1.f,.65f),2);
+        else Box(7,DP-FVector2f(2),FVector2f(4),White,FLinearColor(.5f,1.f,.65f));
+    }
+    Box(8,{10,Size.Y-27},{370,20},White,Dark);
+    Label(9,{17,Size.Y-25},FString::Printf(TEXT("MATÉRIEL  ·  Élastiques %d/10  ·  Treuils %d/10"),Bungees,Winches),FLinearColor(1,.91f,.68f));
     const FVector2D Pilot(Plane->PilotPosition()*.01);
     Mark(Pilot,TEXT("Pilote"),FLinearColor(.65f,1.f,.87f),1);
     if(Plane->IsNoclip() || !Plane->IsHeldForLaunch())
         Mark(Plane->MapPositionXY(),Plane->IsNoclip()?TEXT("Caméra"):TEXT("Planeur"),FLinearColor(.62f,.86f,1.f),18);
-    return L+7;
+    return L+9;
 }

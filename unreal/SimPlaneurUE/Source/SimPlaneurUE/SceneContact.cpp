@@ -53,7 +53,7 @@ void SceneContact::Solid(UPrimitiveComponent* Component,FName Kind)
 }
 
 bool SceneContact::SweepTopy(UWorld* World,const AActor* Plane,const FTransform& From,const FTransform& To,
-                             FTransform& Rest,FName& Kind,FVector FuselageCentre,FVector2D SizeScale,double WingRisePerSpan,FVector4 Wheel,double TipSweepCm)
+                             FTransform& Rest,FName& Kind,FVector FuselageCentre,FVector2D SizeScale,double WingRisePerSpan,FVector4 Wheel,double TipSweepCm,FHitResult* Impact)
 {
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(TopySceneContact),false,Plane);
     const double Angle=FMath::RadiansToDegrees(From.GetRotation().AngularDistance(To.GetRotation()));
@@ -84,6 +84,7 @@ bool SceneContact::SweepTopy(UWorld* World,const AActor* Plane,const FTransform&
             Probe(FVector(Wheel.X,Wheel.Y,Wheel.Z),FVector::UpVector,Wheel.W,Wheel.W);
         if (First.bBlockingHit)
         {
+            if(Impact) *Impact=First;
             Rest.Blend(Start,End,First.Time);
             const float Skin=First.bStartPenetrating ? First.PenetrationDepth+1.f : .5f;
             Rest.AddToTranslation(First.Normal*Skin);

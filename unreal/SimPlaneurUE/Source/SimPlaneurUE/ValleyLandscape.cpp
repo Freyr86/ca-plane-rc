@@ -1,4 +1,5 @@
 #include "ValleyLandscape.h"
+#include "CirqueLandscape.h"
 
 namespace
 {
@@ -23,7 +24,7 @@ float Valley::ShoreDistance(float X, float Y)
     return 20500.f*(FMath::Sqrt(Along*Along+Bend*Bend)-1.f+Inlets);
 }
 
-float Valley::Height(float X, float Y)
+float Valley::NaturalHeight(float X, float Y)
 {
     const FVector2D P(X,Y);
     const float Shore = ShoreDistance(X,Y);
@@ -46,6 +47,11 @@ float Valley::Height(float X, float Y)
     const float Foothills = Front*(20500.f + 12500.f*FMath::Sin(2*A+.7f) + 22500.f*Broad + 12500.f*Spurs + 7000.f*Crags);
     const float Peaks = Back*(52500.f + 34000.f*FMath::Sin(3*A-.8f) + 49000.f*Broad + 55500.f*Spurs + 21500.f*Crags);
     return Floor + FMath::SmoothStep(95000.f,130000.f,R)*(.38f*Foothills+.32f*Peaks);
+}
+
+float Valley::Height(float X, float Y)
+{
+    return Cirque::ApplyHeight(X, Y, NaturalHeight(X, Y));
 }
 
 float Valley::Woodland(float X, float Y)

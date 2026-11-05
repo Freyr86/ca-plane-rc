@@ -2,6 +2,7 @@
   "model": "VJX F3F 2022",
   "extra_down_elevator_moment": -0.15,
   "schema": 1,
+  "impact_resistance": 1.35,
   "flaps": {"max_up_deg": 3, "max_down_deg": 65, "affected_wing_fraction": 0.48},
   "mass_kg": 2.73,
   "reference_cg_from_root_le_mm": 98,

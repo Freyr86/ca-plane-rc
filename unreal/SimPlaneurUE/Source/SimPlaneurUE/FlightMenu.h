@@ -35,7 +35,7 @@ public:
     FGliderControlGains DraftControlGains() const { return DraftGains; }
 
 private:
-    enum class EPage { Home, Hangar, Devices, Graphics, Weather, Vario, Map, Settings, Credits };
+    enum class EPage { Home, Hangar, Devices, Graphics, Weather, Vario, Map, Settings, Credits, Equipment };
     TSharedPtr<SFlightMap> MapWidget;
     bool bMapFromFlight=false;
     void Map(SVerticalBox& List);

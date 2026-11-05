@@ -1,6 +1,7 @@
 {
   "model": "MDM-1 Fox 1:2",
   "schema": 1,
+  "impact_resistance": 1.15,
   "mass_kg": 24,
   "reference_cg_from_root_le_mm": 160,
   "conventional_tail": true,

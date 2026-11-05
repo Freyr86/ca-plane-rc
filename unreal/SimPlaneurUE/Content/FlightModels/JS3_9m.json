@@ -1,6 +1,7 @@
 {
   "model": "Jonker JS-3 9 m",
   "schema": 1,
+  "impact_resistance": 1,
   "mass_kg": 22,
   "reference_cg_from_root_le_mm": 116,
   "conventional_tail": true,

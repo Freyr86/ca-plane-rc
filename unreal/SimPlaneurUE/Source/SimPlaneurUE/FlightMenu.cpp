@@ -397,7 +397,7 @@ void SFlightMenu::Construct(const FArguments& Args)
               [SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Panel).Padding(FMargin(12,7))
                [SNew(SVerticalBox)
                 +SVerticalBox::Slot().AutoHeight()[Choice(TEXT("SITE DE VOL"),[this]{
-                    const TCHAR* Names[]={TEXT("01  ·  Prairie du lac"),TEXT("02  ·  Chalet du versant"),TEXT("03  ·  Piste des Alpages")};
+                    const TCHAR* Names[]={TEXT("01  ·  Prairie du lac"),TEXT("02  ·  Chalet du versant"),TEXT("03  ·  Piste des Alpages"),TEXT("04  ·  Belvédère du cirque")};
                     return FString(Names[Plane->LaunchSiteNumber()-1]);
                 },[this](int32 Step){Plane->SwitchLaunchSite(Step);})]
                 +SVerticalBox::Slot().AutoHeight().Padding(0,5)[Line(Gold)]
@@ -510,7 +510,7 @@ void SFlightMenu::Build()
     if (Page==EPage::Home) Home(*List);
     else
     {
-        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : TEXT("Graphismes");
+        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : TEXT("Graphismes");
         Add(*List,Text(Title,27,Ink,TEXT("BoldItalic")),4);
         Add(*List,Line(Ink),10);
         if (Page==EPage::Hangar) Hangar(*List);
@@ -519,6 +519,26 @@ void SFlightMenu::Build()
         if (Page==EPage::Weather) Weather(*List);
         if (Page==EPage::Vario) Vario(*List);
         if (Page==EPage::Map) Map(*List);
+        if (Page==EPage::Equipment)
+        {
+            Add(*List,Text(TEXT("ÉLASTIQUE / TREUIL"),12,MutedInk,TEXT("Bold")),8);
+            Add(*List,Choice(TEXT("COULEUR"),[this]{return Plane->BungeeColourName();},
+                [this](int32 Step){Plane->CycleBungeeColour(Step);}),12);
+            Add(*List,SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(14)
+                [SNew(SBox).HeightOverride(12)[SNew(SBorder).BorderImage(Fill())
+                    .BorderBackgroundColor_Lambda([this]{return Plane->BungeeColour();})]],14);
+            auto ColourHint=Text(TEXT("La couleur est conservée après rangement et au prochain démarrage."),12,MutedInk);
+            ColourHint->SetAutoWrapText(true);
+            Add(*List,ColourHint,16);
+            auto ReleaseHint=Text(FString::Printf(TEXT("Largage automatique à %.0f° d’élévation de la ligne ou à sa détente."),FBungeeLaunch::ReleaseAngleDegrees),12,MutedInk);
+            ReleaseHint->SetAutoWrapText(true);
+            Add(*List,ReleaseHint,14);
+            Add(*List,Choice(TEXT("PUISSANCE MAX. DU TREUIL"),[this]{return FString::Printf(TEXT("%.0f %%"),Plane->WinchPowerLimit()*100.f);},
+                [this](int32 Step){Plane->SetWinchPowerLimit(Plane->WinchPowerLimit()+Step*.05f);}),14);
+            auto WinchHint=Text(TEXT("F1 : treuil · F4 : élastique. Pose la machine puis le départ avec E (40 à 400 m pour le treuil). Espace démarre une traction progressive ; E largue le crochet. Sans voie affectée, le treuil fonctionne automatiquement. Pour doser la traction, affecte « Puissance du treuil » dans les périphériques."),12,MutedInk);
+            WinchHint->SetAutoWrapText(true);
+            Add(*List,WinchHint,14);
+        }
         if (Page==EPage::Credits)
         {
             Add(*List,SNew(SBorder).BorderImage(Fill()).BorderBackgroundColor(Ink).Padding(FMargin(15,15))
@@ -530,13 +550,26 @@ void SFlightMenu::Build()
                      +SVerticalBox::Slot().AutoHeight()[Text(TEXT("CONCEPTION DU SIMULATEUR"),10,Gold,TEXT("Bold"))]
                      +SVerticalBox::Slot().AutoHeight()[Text(TEXT("Freyr86"),24,Paper,TEXT("BoldItalic"))]]],15);
             Add(*List,Text(TEXT("Remerciements"),16,Ink,TEXT("BoldItalic")),5);
+            Add(*List,Text(TEXT("VJX · CONCEPTION ET CONTRIBUTIONS"),11,MutedInk,TEXT("Bold")),8);
+            Add(*List,Text(TEXT("Jochen Günzel"),18,Ink,TEXT("BoldItalic")),3);
+            auto VjxDesigner=Text(TEXT("Conception du VJX et autorisation d’utiliser et d’adapter les ressources du projet dans Ça plane !."),12,MutedInk);
+            VjxDesigner->SetAutoWrapText(true);
+            Add(*List,VjxDesigner,10);
+            Add(*List,Text(TEXT("Mario Perner"),18,Ink,TEXT("BoldItalic")),3);
+            auto VjxContact=Text(TEXT("Mise en relation avec Jochen et échanges autour du projet VJX."),12,MutedInk);
+            VjxContact->SetAutoWrapText(true);
+            Add(*List,VjxContact,10);
+            auto VjxThanks=Text(TEXT("Merci à tous les deux pour votre disponibilité, vos réponses bienveillantes et votre soutien à l’intégration du VJX dans le simulateur."),12,Ink);
+            VjxThanks->SetAutoWrapText(true);
+            Add(*List,VjxThanks,15);
             Add(*List,Text(TEXT("Merci de faire voler Ça plane !"),13,MutedInk),15);
         }
         if (Page==EPage::Settings)
         {
             Add(*List,Button(TEXT("Devices"),TEXT("Radio et périphériques"),[this]{Go(EPage::Devices);}),6);
             Add(*List,Button(TEXT("Graphics"),TEXT("Graphismes et affichage"),[this]{Go(EPage::Graphics);}),6);
-            Add(*List,Button(TEXT("Vario"),TEXT("Vario sonore"),[this]{Go(EPage::Vario);}),12);
+            Add(*List,Button(TEXT("Vario"),TEXT("Vario sonore"),[this]{Go(EPage::Vario);}),6);
+            Add(*List,Button(TEXT("Equipment"),TEXT("Matériel de lancement"),[this]{Go(EPage::Equipment);}),12);
         }
         if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),Page==EPage::Map && bMapFromFlight?TEXT("Reprendre la session"):TEXT("Retour au menu"),[this]{if(Page==EPage::Map) CloseMap(); else Go(EPage::Home);}));
     }
@@ -588,6 +621,12 @@ void SFlightMenu::Hangar(SVerticalBox& List)
         if (!Plane->IsAppearanceReady()) return FString(TEXT("Chargement du planeur…"));
         return Plane->HangarSummary();
     },12,MutedInk),12);
+    if (Plane->ModelIndex()==2)
+    {
+        auto VjxCredit=Text(TEXT("VJX conçu par Jochen Günzel · adapté avec son autorisation. Remerciements à Mario Perner pour la mise en relation."),11,MutedInk);
+        VjxCredit->SetAutoWrapText(true);
+        Add(List,VjxCredit,12);
+    }
     if (!Plane->CanSelectModel()) { Add(List,Text(TEXT("Modèle indisponible"),12,Rust)); return; }
     Add(List,Choice(TEXT("ZOOM DU PLANEUR"),[this]{return FString::Printf(TEXT("× %.2f"),Plane->HangarZoom);},
         [this](int32 Step){Plane->HangarZoom=FMath::Clamp(Plane->HangarZoom+Step*.25f,.5f,5.f);}),8);
@@ -714,6 +753,9 @@ void SFlightMenu::Devices(SVerticalBox& List)
         +SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom)
         [Button(TEXT("Refresh"),TEXT("Rechercher"),[&R]{R.Scan();R.Notice=TEXT("Recherche terminée.");})],4);
     Add(List,Live([&R]{return R.Status();},11,Rust),12);
+    auto WalkHint=Text(TEXT("WASD / ZQSD et les flèches déplacent le pilote, même en vol. Pour piloter au clavier, attribue des touches différentes ; la radio reste indépendante."),11,MutedInk);
+    WalkHint->SetAutoWrapText(true);
+    Add(List,WalkHint,12);
 
     auto Select=[this,&R](A Next){R.CancelLearn();Control=Next;Build();};
     auto Left=SNew(SVerticalBox);
@@ -725,13 +767,13 @@ void SFlightMenu::Devices(SVerticalBox& List)
             const int32 Index=Groups.IndexOfByKey(Item);
             if (Index<0 || Index==int32(Group)) return;
             Group=EControlGroup(Index);
-            for (int32 I=0;I<ControlCount;++I) if (ControlSpec(A(I)).Group==Group) {Select(A(I));return;}
+            for (int32 I=0;I<ControlCount;++I) if (A(I)!=A::Instruments && ControlSpec(A(I)).Group==Group) {Select(A(I));return;}
         }),8);
     for (int32 I=0;I<ControlCount;++I)
     {
         const A Item=A(I);
         const auto& S=ControlSpec(Item);
-        if (S.Group==Group) Add(*Left,Button(S.Id,S.Label,[Select,Item]{Select(Item);},Item==Control),3);
+        if (Item!=A::Instruments && S.Group==Group) Add(*Left,Button(S.Id,S.Label,[Select,Item]{Select(Item);},Item==Control),3);
     }
 
     auto Right=SNew(SVerticalBox);

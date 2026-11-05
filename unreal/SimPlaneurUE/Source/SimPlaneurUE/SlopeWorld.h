@@ -36,6 +36,9 @@ public:
     UFUNCTION(BlueprintPure)
     static float TerrainHeightCm(float X, float Y);
     static float TerrainGridSpacing(float X,float Y);
+    // Mesh vertex height, including the straight edges joining terrain grids.
+    // Keep TerrainHeightCm as the continuous heightfield for the flight model.
+    static float TerrainVertexHeightCm(float X,float Y);
 
 private:
     UPROPERTY()
@@ -79,6 +82,7 @@ private:
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* WeatherClouds=nullptr;
     void BuildLaunchSite();
+    void BuildCirqueFurniture();
     void BuildChalet(double X,double Y,bool Terrace);
     void UpdateWindsock(float DeltaSeconds, double WeatherTime);
     struct FSiteWindsock
@@ -94,4 +98,5 @@ private:
     void BuildLake();
     void BuildTerrainSection(int32 Section, int32 Cells, float Spacing, FVector2D Origin, FBox2D Hole, float BorderStep);
     void AddScenery();
+    void AddCirqueScenery();
 };

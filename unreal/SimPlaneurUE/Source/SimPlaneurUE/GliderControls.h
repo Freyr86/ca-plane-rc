@@ -8,7 +8,7 @@ enum class EGliderControl : uint8
     Rudder, Elevator, Aileron, LowRates, TrimRudder, TrimElevator, TrimAileron,
     Flaps, Spoilers, Butterfly,
     Motor, MotorCut, Pylon, Gear, WheelBrake, TowRelease, Ballast,
-    Relaunch, Camera, Instruments, Menu, Meadow, Sidestep, Aux1, Aux2, Aux3, Aux4, WindTrails, HandLaunch, Noclip, Vario, Count
+    Relaunch, Camera, Instruments, Menu, Meadow, Sidestep, Aux1, Aux2, Aux3, Aux4, WindTrails, HandLaunch, Noclip, Vario, Backpack, Equipment, Winch, WinchPower, Count
 };
 struct FControlSpec
 {

@@ -5,6 +5,8 @@
 #include "FlightRadio.h"
 #include "GliderDynamics.h"
 #include "WindTrails.h"
+#include "BungeeLaunch.h"
+#include "LaunchInstallations.h"
 #include "SlopeFlightPawn.generated.h"
 
 class USceneComponent;
@@ -63,7 +65,24 @@ public:
     bool IsHeldForLaunch() const { return bHeldForLaunch; }
     bool UsesDiscusLaunch() const { return SelectedModel == 5; }
     bool IsThrowing() const { return ThrowSeconds >= 0.f; }
-    bool IsWalking() const { return bHeldForLaunch && !IsThrowing() && !bNoclip && !bMenuOpen; }
+    bool IsWalking() const { return !bGroundPhysics && (bHeldForLaunch || bInBackpack || Flight.IsStopped()) && !IsThrowing() && !bNoclip && !bMenuOpen; }
+    bool InBackpack() const { return bInBackpack; }
+    bool CanWalkInFlight() const { return !bMenuOpen && !bNoclip && !bHeldForLaunch && !IsThrowing() && !Flight.IsStopped() && !bGroundPhysics; }
+    const FBungeeLaunch& BungeeStatus() const { return Bungee; }
+    bool BungeeSelected() const { return bBungeeSelected && !Bungee.IsWinch(); }
+    bool WinchSelected() const { return bBungeeSelected && Bungee.IsWinch(); }
+    float WinchPowerLimit() const { return WinchMaximumPower; }
+    void SetWinchPowerLimit(float Value);
+    double WinchCommand() const;
+    FLinearColor BungeeColour() const;
+    static FLinearColor EquipmentColour(int32 Index);
+    const TArray<FLaunchInstallation>& InstalledEquipment() const { return LaunchInstallations.Entries(); }
+    FString EquipmentConfirmation() const { return FPlatformTime::Seconds()<EquipmentConfirmationUntil ? EquipmentConfirmationText : FString(); }
+    FString BungeeColourName() const;
+    void CycleBungeeColour(int32 Step);
+    double BungeeTension() const;
+    FString EquipmentPrompt() const;
+    FString BackpackAction() const;
     const TCHAR* FlightCameraName() const;
     bool IsNoclip() const { return bNoclip; }
     FVector ExplorationPosition() const { return NoclipPosition; }
@@ -95,6 +114,53 @@ bool TrailsVisible() const { return bShowWindTrails; }
     int32 TrailDistance=90;
     void ShowTrails(bool Visible) { bShowWindTrails=Visible; }
 private:
+    FLaunchInstallations LaunchInstallations;
+    int32 ActiveBungeeId = INDEX_NONE;
+    FString EquipmentConfirmationText;
+    double EquipmentConfirmationUntil = 0.;
+    void SelectNearbyBungee();
+    void ActivateBungee(int32 Id);
+    FBungeeLaunch Bungee;
+    bool bInBackpack = false;
+    bool bBungeeSelected = false;
+    int32 BungeeColourIndex = 0;
+    bool bPlacementValid = false;
+    FVector PlacementPoint = FVector::ZeroVector;
+    float InteractionSeconds = 0.f;
+    bool bInteractionConsumed = false;
+    bool bInteractionStarted = false;
+    bool bInteractionCanPack = false;
+    UPROPERTY()
+    TObjectPtr<ULineBatchComponent> EquipmentLines;
+    void ToggleBackpack();
+    void SelectBungee();
+    void SelectLaunchEquipment(ELaunchEquipment Type);
+    float WinchMaximumPower = 1.f;
+    bool bManualWinchPower = false;
+    UPROPERTY()
+    TMap<int32,TObjectPtr<class AWinchStation>> WinchStations;
+    void SyncWinchStations();
+    void SaveBungee();
+    void LoadBungee();
+    void InteractEquipment(bool Pack);
+    void UpdateEquipment(float DeltaSeconds);
+    void HandleEquipmentInput(bool Down, bool Pressed, bool Released, float DeltaSeconds);
+    FString DeparturePlacementError() const;
+    FVector EquipmentLineEnd() const;
+    bool NearEquipmentEnd() const;
+    bool ClearBungeeRoute(const FVector& End) const;
+    FTransform BungeeHandPose() const;
+    FVector BungeeForceNED();
+    bool bBungeeProof = false;
+    bool bWinchProof = false;
+    bool bLandingProof = false;
+    void TestLanding(float Elapsed);
+    bool bPilotProof = false;
+    void TestPilotMovement(float Elapsed);
+    bool bCirqueProof = false;
+    void TestCirque(float Elapsed);
+    void TestBungee(float Elapsed);
+    void TestWinch(float Elapsed);
     UPROPERTY()
     USceneComponent* SceneRoot;
 
@@ -186,6 +252,7 @@ private:
     float LaunchHeading = 0.f;
     float WalkPitch = -3.f;
     void MoveWalking(float DeltaSeconds);
+    void MovePilot(const FVector& Direction,float DeltaSeconds,bool Sprint);
     bool FindPilotGround(const FVector& Position, FHitResult& Hit,bool IncludeWater=false) const;
     void KeepNoclipAboveGround();
     FString SiteNotice;
@@ -232,6 +299,19 @@ private:
     void BuildFallbackTopy();
     void BuildWingSection();
     void ResetFlight();
+    void StopFlightAt(const FTransform& Contact);
+public:
+    int32 DamageLevel() const { return ImpactDamage; }
+    bool IsSettling() const { return bGroundPhysics; }
+private:
+    UPROPERTY() TObjectPtr<UProceduralMeshComponent> LandingBody;
+    int32 ImpactDamage=0;
+    bool bGroundPhysics=false, bLandingPaused=false;
+    FVector LandingVelocity=FVector::ZeroVector, LandingAngular=FVector::ZeroVector;
+    void BeginGroundPhysics(const FTransform& Pose,const FHitResult& Hit,double Length,double Span,double Rise,double Sweep,FVector4 Wheel);
+    void UpdateGroundPhysics(float Dt);
+    void ClearGroundPhysics();
+    UFUNCTION() void LandingHit(UPrimitiveComponent* Component,AActor* Other,UPrimitiveComponent* OtherComponent,FVector Impulse,const FHitResult& Hit);
     void AdvanceFlight(float DeltaSeconds);
     void ReadControls(float DeltaSeconds);
     void StepPilot(float Centimetres);

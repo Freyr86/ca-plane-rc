@@ -1,6 +1,7 @@
 {
   "model": "LongBow Mk2 · Will Beavor",
   "schema": 1,
+  "impact_resistance": 1.05,
   "mass_kg": 1.074,
   "reference_cg_from_root_le_mm": 214,
   "span_m": 2.155,

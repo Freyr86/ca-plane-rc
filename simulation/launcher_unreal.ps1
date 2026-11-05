@@ -85,11 +85,61 @@ if ($args -contains '--smoke') {
         $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
         $gameArgs += '-MenuProof', "-GameUserSettingsINI=$(Join-Path $work 'menu-proof-settings.ini')"
     }
+    if ($args -contains '--bungee-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $bungeeLog = Join-Path $work 'bungee-proof.log'
+        $gameArgs += "-abslog=$bungeeLog", '-BungeeProof', "-GameUserSettingsINI=$(Join-Path $work 'bungee-proof-settings.ini')"
+    }
     if ($args -contains '--meadow-proof') { $gameArgs += '-MeadowProof' }
+    if ($args -contains '--pilot-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $pilotLog = Join-Path $work 'pilot-proof.log'
+        $gameArgs += "-abslog=$pilotLog", '-PilotProof', "-GameUserSettingsINI=$(Join-Path $work 'pilot-proof-settings.ini')"
+    }
+    if ($args -contains '--cirque-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $cirqueLog = Join-Path $work 'cirque-proof.log'
+        $gameArgs += "-abslog=$cirqueLog", '-CirqueProof', "-GameUserSettingsINI=$(Join-Path $work 'cirque-proof-settings.ini')"
+    }
+    if ($args -contains '--landing-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $landingLog = Join-Path $work 'landing-proof.log'
+        $gameArgs += "-abslog=$landingLog", '-LandingProof', "-GameUserSettingsINI=$(Join-Path $work 'landing-proof-settings.ini')"
+    }
+    if ($args -contains '--winch-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $winchLog = Join-Path $work 'winch-proof.log'
+        $gameArgs += "-abslog=$winchLog", '-WinchProof', "-GameUserSettingsINI=$(Join-Path $work 'winch-proof-settings.ini')"
+    }
     if ($args -contains '--contact-proof') { $gameArgs += '-ContactProof' }
     if ($args -contains '--offscreen') {
         $gameArgs += '-RenderOffscreen','-unattended','-NoSplash','-ForceRes','-ExecCmds=r.SetRes 1280x800w'
     }
 }
 & $editor @gameArgs | Out-Host
+if ($args -contains '--bungee-proof') {
+    $events = Select-String -LiteralPath $bungeeLog -Pattern 'BUNGEE_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'BUNGEE_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
+if ($args -contains '--winch-proof') {
+    $events = Select-String -LiteralPath $winchLog -Pattern 'WINCH_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'WINCH_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
+if ($args -contains '--landing-proof') {
+    $events = Select-String -LiteralPath $landingLog -Pattern 'LANDING_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'LANDING_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
+if ($args -contains '--pilot-proof') {
+    $events = Select-String -LiteralPath $pilotLog -Pattern 'PILOT_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'PILOT_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
+if ($args -contains '--cirque-proof') {
+    $events = Select-String -LiteralPath $cirqueLog -Pattern 'CIRQUE_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'CIRQUE_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
 exit $LASTEXITCODE

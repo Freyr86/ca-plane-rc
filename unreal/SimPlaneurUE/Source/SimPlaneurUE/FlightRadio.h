@@ -32,7 +32,7 @@ struct FFlightRadio
     void Initialize();
     void Scan();
     void CycleDevice(int32 Step);
-    void Poll(APlayerController* PC,bool InMenu);
+    void Poll(APlayerController* PC,bool InMenu,bool ReserveWalkingKeys=false);
     bool HasDevice() const {return Devices.IsValidIndex(Active);}
     bool EditingKeyboard() const {return Preferred==TEXT("Keyboard");}
     bool CanEdit() const {return EditingKeyboard() || HasDevice();}
@@ -44,6 +44,11 @@ struct FFlightRadio
     float SteeringCommand(bool UseAilerons) const;
     float Preview(EGliderControl A) const;
     bool Pressed(EGliderControl A) const;
+    bool HasAssignment(EGliderControl A) const
+    {
+        const auto Assigned=[](const FControlBinding& B){return !B.Plus.IsNone() || !B.Minus.IsNone();};
+        return Assigned(Keys.Bindings[int32(A)]) || (HasDevice() && Assigned(Stick.Bindings[int32(A)]));
+    }
     FString Shortcut(EGliderControl A) const;
     const FControlBinding& Binding(EGliderControl A) const;
     FString InputLabel(FName Key) const;
@@ -69,6 +74,7 @@ private:
         FControlOutput Outputs[ControlCount];
     };
     FProfile Keys, Stick;
+    bool bWalkingKeys=false;
     TSharedPtr<FRadioWindows> Backend;
     TArray<FRadioDevice> Devices;
     FString Preferred=TEXT("Auto"), SettingsIni;

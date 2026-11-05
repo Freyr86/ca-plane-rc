@@ -10,6 +10,8 @@ namespace Valley
 
     // Distances and heights use Unreal centimetres. The shoreline is the zero contour.
     float ShoreDistance(float X, float Y);
+    // Original unmodified relief, retained for stable procedural scenery seeds.
+    float NaturalHeight(float X, float Y);
     float Height(float X, float Y);
     float Woodland(float X, float Y);
 }

@@ -100,6 +100,33 @@ bool FGliderBindingsTest::RunTest(const FString&)
     R.Active=INDEX_NONE; R.Stick={}; R.Preferred=TEXT("Keyboard"); R.LoadProfile(R.Keys,true);
     R.Evaluate(R.Keys,{FName(TEXT("Right"))},true);
     TestEqual(TEXT("Keyboard right arrow steers through aileron input"),R.SteeringCommand(true),1.f);
+    TestEqual(TEXT("F1 selects winch"),R.Keys.Bindings[int32(A::Winch)].Plus,FName(TEXT("F1")));
+    TestFalse(TEXT("Winch defaults to automatic without a power binding"),R.HasAssignment(A::WinchPower));
+    R.Active=0; R.Stick.Bindings[int32(A::WinchPower)].Plus=TEXT("Slider1");
+    TestTrue(TEXT("Radio winch binding detected while keyboard profile is displayed"),R.HasAssignment(A::WinchPower));
+    for(float Value:{-1.f,0.f,1.f})
+    {
+        F.Axes[6]=Value; R.FeedFrame(F);
+        TestEqual(TEXT("Independent winch power spans zero to full"),R.Command(A::WinchPower),(Value+1.f)*.5f);
+    }
+    R.Active=INDEX_NONE;
+    TestFalse(TEXT("Disconnected transmitter is not an available power control"),R.HasAssignment(A::WinchPower));
+    R.Stick={}; R.Active=0; R.Centers[1]=0.;
+    R.Stick.Bindings[int32(A::Elevator)].Plus=TEXT("AxisY");
+    F={}; F.Axes[1]=.65f; R.FeedFrame(F);
+    const float RadioElevator=R.Stick.Outputs[int32(A::Elevator)].Value;
+    R.bWalkingKeys=true;
+    R.Evaluate(R.Keys,{FName(TEXT("Right")),FName(TEXT("Up")),FName(TEXT("D")),FName(TEXT("W"))},true);
+    TestEqual(TEXT("Walking right does not add aileron input"),R.Command(A::Aileron),0.f);
+    TestEqual(TEXT("Walking sideways does not add rudder input"),R.Command(A::Rudder),0.f);
+    TestEqual(TEXT("Walking forwards leaves radio elevator intact"),R.Command(A::Elevator),RadioElevator);
+    TestEqual(TEXT("Movement reservation preserves saved bindings"),R.Keys.Bindings[int32(A::Aileron)].Plus,FName(TEXT("Right")));
+    R.Keys.Bindings[int32(A::Aileron)].Plus=TEXT("Home");
+    R.Evaluate(R.Keys,{FName(TEXT("Home"))},true);
+    TestEqual(TEXT("Custom non-movement keyboard piloting still works"),R.Command(A::Aileron),1.f);
+    R.bWalkingKeys=false;
+    R.Evaluate(R.Keys,{FName(TEXT("D"))},true);
+    TestEqual(TEXT("Menu preview can still evaluate a reserved key"),R.Keys.Outputs[int32(A::Rudder)].Value,1.f);
     GConfig->UnloadFile(R.SettingsIni);
     IFileManager::Get().Delete(*R.SettingsIni);
     return true;

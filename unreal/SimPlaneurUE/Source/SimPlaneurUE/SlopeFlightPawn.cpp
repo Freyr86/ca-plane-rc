@@ -1,5 +1,7 @@
 #include "SlopeFlightPawn.h"
 #include "Airfield.h"
+#include "CirqueSite.h"
+#include "PilotMovement.h"
 #include "Misc/ConfigCacheIni.h"
 #include "SlopeWorld.h"
 #include "SceneContact.h"
@@ -96,6 +98,18 @@ ASlopeFlightPawn::ASlopeFlightPawn()
 
     SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
     SetRootComponent(SceneRoot);
+    LandingBody=CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("LandingPhysics"));
+    LandingBody->SetupAttachment(SceneRoot);
+    LandingBody->bUseComplexAsSimpleCollision=false;
+    LandingBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    LandingBody->SetHiddenInGame(true);
+    LandingBody->SetNotifyRigidBodyCollision(true);
+    LandingBody->OnComponentHit.AddDynamic(this,&ASlopeFlightPawn::LandingHit);
+    EquipmentLines = CreateDefaultSubobject<ULineBatchComponent>(TEXT("MaterielLancement"));
+    EquipmentLines->SetupAttachment(SceneRoot);
+    EquipmentLines->SetAbsolute(true, true, true);
+    EquipmentLines->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    EquipmentLines->SetCastShadow(false);
     AirLines = CreateDefaultSubobject<ULineBatchComponent>(TEXT("FiletsAir"));
     AirLines->SetupAttachment(SceneRoot);
     AirLines->SetAbsolute(true, true, true);
@@ -140,6 +154,22 @@ ASlopeFlightPawn::ASlopeFlightPawn()
 FTransform ASlopeFlightPawn::MenuCameraPose() const
 {
     const double T = TourTime * UE_TWO_PI / 94.;
+    if (SelectedSite==4)
+    {
+        // Float behind the picnic area, looking over it towards the cirque.
+        // Keep the entire camera path above the actual undulating plateau.
+        const FVector2D Forward(FMath::Cos(FMath::DegreesToRadians(CirqueSite::Heading)),
+            FMath::Sin(FMath::DegreesToRadians(CirqueSite::Heading)));
+        const FVector2D Right(-Forward.Y,Forward.X);
+        const FVector2D Aim=CirqueSite::Pilot+Forward*700.;
+        const double Ground=ASlopeWorld::TerrainHeightCm(CirqueSite::Pilot.X,CirqueSite::Pilot.Y);
+        const FVector Look(Aim,Ground+110.);
+        const FVector2D Offset=CirqueSite::Pilot-Forward*(3500.+500.*FMath::Cos(T))
+            +Right*(2200.+1300.*FMath::Sin(T));
+        const FVector Eye(Offset,FMath::Max(Ground+2400.+350.*FMath::Cos(T),
+            ASlopeWorld::TerrainHeightCm(Offset.X,Offset.Y)+850.));
+        return FTransform((Look-Eye).Rotation(),Eye);
+    }
     if (SelectedSite==3)
     {
         const FVector Look(Airfield::Point(0,400),ASlopeWorld::TerrainHeightCm(Airfield::Centre.X,Airfield::Centre.Y));
@@ -170,6 +200,7 @@ void ASlopeFlightPawn::ShowMenuPresentation(bool Hangar,bool Poster)
         BuildFallbackTopy();
     }
     bPosterHome = Poster && bMenuOpen;
+    PlaneVisual->SetHiddenInGame(bInBackpack && !bMenuOpen,true);
     bHangarModel = (Hangar || Poster) && bMenuOpen;
     if (bHangarModel) PositionHangarModel();
     else PlaneVisual->SetRelativeTransform(FTransform::Identity);
@@ -214,7 +245,7 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
         OutResult.Rotation = NoclipRotation;
         OutResult.FOV = 75.f;
     }
-    else if (FlightView == EFlightView::FPV)
+    else if (FlightView == EFlightView::FPV && !IsWalking())
     {
         // Mount just beyond the nose so opaque canopies never block the lens.
         const double Length = Aircraft[SelectedModel].LengthCm;
@@ -225,7 +256,7 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
         OutResult.Rotation = GetActorRotation();
         OutResult.FOV = 90.f;
     }
-    else if (FlightView == EFlightView::Ground)
+    else if (FlightView == EFlightView::Ground || IsWalking())
     {
         OutResult.Location = PilotPosition() + FVector(0,0,bInspectMeadow ? 72.f : 170.f);
         OutResult.Rotation = (GetActorLocation() - OutResult.Location).Rotation();
@@ -233,7 +264,7 @@ void ASlopeFlightPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
         OutResult.Rotation.Pitch = FMath::Max(-89.f, OutResult.Rotation.Pitch - 7.f);
         if (bInspectMeadow) OutResult.Rotation = MeadowView;
         OutResult.FOV = bInspectMeadow ? 64.f : 50.f;
-        if (bHeldForLaunch && !bInspectMeadow)
+        if ((bHeldForLaunch || IsWalking()) && !bInspectMeadow)
         {
             OutResult.Rotation = FRotator(WalkPitch,LaunchHeading,0.f);
             OutResult.FOV = 75.f;
@@ -254,12 +285,18 @@ void ASlopeFlightPawn::BeginPlay()
     PosterPrint=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_MenuAlpinePrint.M_MenuAlpinePrint"));
     ValleyAir::LoadSettings();
     PrepareFlightAudio();
+    LoadBungee();
     GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
     GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("TrailDistance"),TrailDistance,GGameUserSettingsIni);
     TrailDistance=FMath::Clamp(TrailDistance,20,500);
     PilotSite=FVector(ASlopeWorld::PilotX,ASlopeWorld::PilotY,
         ASlopeWorld::TerrainHeightCm(ASlopeWorld::PilotX,ASlopeWorld::PilotY));
     bSmokeMode = FParse::Param(FCommandLine::Get(), TEXT("SimSmoke"));
+    bBungeeProof = FParse::Param(FCommandLine::Get(), TEXT("BungeeProof"));
+    bWinchProof = FParse::Param(FCommandLine::Get(), TEXT("WinchProof"));
+    bLandingProof = FParse::Param(FCommandLine::Get(), TEXT("LandingProof"));
+    bPilotProof = FParse::Param(FCommandLine::Get(), TEXT("PilotProof"));
+    bCirqueProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("CirqueProof"));
     bContactProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("ContactProof"));
     bCaptureSite = FParse::Param(FCommandLine::Get(), TEXT("CaptureSite"));
     bMeadowProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("MeadowProof"));
@@ -365,7 +402,7 @@ bool ASlopeFlightPawn::IsControlInUse(EGliderControl Control) const
         if (Control == A::Aileron || Control == A::TrimAileron) return !UsesAileronSteering();
         if (Control == A::Rudder || Control == A::TrimRudder) return UsesAileronSteering();
     }
-    if (Control == A::Meadow) return false; // Replaced by mouse look while walking.
+    if (Control == A::Meadow || Control == A::Instruments) return false; // Retired player actions.
     if (Control == A::Aileron || Control == A::TrimAileron) return PreviewModel >= 2 || UsesAileronSteering();
     if (Control == A::Rudder || Control == A::TrimRudder) return PreviewModel >= 2 || !UsesAileronSteering();
     return ControlSpec(Control).OnTopy;
@@ -523,16 +560,20 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
     const float TargetElevator=FMath::Clamp(Rate*Radio.Command(A::Elevator)+Radio.Command(A::TrimElevator),-1.f,1.f);
     Elevator = Radio.IsDriving() ? TargetElevator : FMath::FInterpConstantTo(Elevator, TargetElevator, DeltaSeconds, 3.0f);
     Rudder = Radio.IsDriving() ? TargetRudder : FMath::FInterpConstantTo(Rudder, TargetRudder, DeltaSeconds, 3.0f);
+    if (Radio.Pressed(A::Backpack)) ToggleBackpack();
+    if (Radio.Pressed(A::Equipment)) SelectBungee();
+    if (Radio.Pressed(A::Winch)) SelectLaunchEquipment(ELaunchEquipment::Winch);
+    if (Bungee.State == FBungeeLaunch::EState::Towing && (Radio.Pressed(A::TowRelease) || PlayerController->WasInputKeyJustPressed(EKeys::E))) Bungee.Release();
     if (Radio.Pressed(A::Relaunch))
     {
         ResetFlight();
     }
     else
     {
-        if (IsWalking()) MoveWalking(DeltaSeconds);
+        if (IsWalking() || CanWalkInFlight()) MoveWalking(DeltaSeconds);
         if (Radio.Pressed(A::HandLaunch)) BeginHandLaunch();
     }
-    if (Radio.Pressed(A::Instruments)) bShowInstruments=!bShowInstruments;
+    // The diagnostic instrument panel is retained for development, without a player shortcut.
     if (Radio.Pressed(A::Vario)) SetVario(!bVarioEnabled,ClimbThreshold,SinkThreshold);
     if (Radio.Pressed(A::WindTrails))
     {
@@ -580,7 +621,7 @@ FVector ASlopeFlightPawn::PilotPosition() const
 
 FVector2D ASlopeFlightPawn::MapPositionXY() const
 {
-    const FVector P=bNoclip?NoclipPosition:(bHeldForLaunch?PilotPosition():GetActorLocation());
+    const FVector P=bNoclip?NoclipPosition:(IsWalking()?PilotPosition():GetActorLocation());
     return FVector2D(P.X*.01,P.Y*.01);
 }
 
@@ -625,45 +666,68 @@ bool ASlopeFlightPawn::PlacePilotFromNoclip()
 
 void ASlopeFlightPawn::MoveWalking(float DeltaSeconds)
 {
-    if (!IsWalking()) return;
+    if (!IsWalking() && !CanWalkInFlight()) return;
     auto* PC=CastChecked<APlayerController>(GetController());
-    const float MouseX=PC->PlayerInput ? PC->PlayerInput->GetRawKeyValue(EKeys::MouseX) : 0.f;
-    const float MouseY=PC->PlayerInput ? PC->PlayerInput->GetRawKeyValue(EKeys::MouseY) : 0.f;
-    LaunchHeading=FRotator::NormalizeAxis(LaunchHeading+MouseX*.14f);
-    WalkPitch=FMath::Clamp(WalkPitch+MouseY*.14f,-80.f,80.f);
+    float Heading=LaunchHeading;
+    if(CanWalkInFlight())
+    {
+        // Keep automatic tracking and move relative to the camera's horizontal
+        // bearing, including when the aircraft is high overhead.
+        FVector Eye; FRotator View;
+        PC->GetPlayerViewPoint(Eye,View);
+        Heading=View.Yaw;
+    }
+    else
+    {
+        const float MouseX=PC->PlayerInput ? PC->PlayerInput->GetRawKeyValue(EKeys::MouseX) : 0.f;
+        const float MouseY=PC->PlayerInput ? PC->PlayerInput->GetRawKeyValue(EKeys::MouseY) : 0.f;
+        LaunchHeading=FRotator::NormalizeAxis(LaunchHeading+MouseX*.14f);
+        WalkPitch=FMath::Clamp(WalkPitch+MouseY*.14f,-80.f,80.f);
+        Heading=LaunchHeading;
+    }
     auto Down=[PC](FKey Key){return PC->IsInputKeyDown(Key);};
     const float Forward=float(Down(EKeys::W)||Down(EKeys::Z)||Down(EKeys::Up))-float(Down(EKeys::S)||Down(EKeys::Down));
     const float Right=FMath::Clamp(float(Down(EKeys::D)||Down(EKeys::Right))-float(Down(EKeys::A)||Down(EKeys::Q)||Down(EKeys::Left))
         +Radio.Command(EGliderControl::Sidestep),-1.f,1.f);
-    const FVector Direction=FRotator(0,LaunchHeading,0).RotateVector(FVector(Forward,Right,0).GetClampedToMaxSize(1.));
+    const FVector Direction=FRotator(0,Heading,0).RotateVector(FVector(Forward,Right,0).GetClampedToMaxSize(1.));
+    MovePilot(Direction,DeltaSeconds,Down(EKeys::LeftShift)||Down(EKeys::RightShift));
+}
+
+void ASlopeFlightPawn::MovePilot(const FVector& Direction,float DeltaSeconds,bool Sprint)
+{
+    if(!IsWalking() && !CanWalkInFlight()) return;
     if (Direction.IsNearlyZero()) return;
-    const FVector Start=PilotPosition();
-    const FVector Desired=Start+Direction*(120.f*FMath::Clamp(DeltaSeconds,0.f,.05f));
-    FHitResult Ground;
-    if (!FindPilotGround(Desired,Ground) || Ground.ImpactNormal.Z<.55f || FMath::Abs(Ground.ImpactPoint.Z-Start.Z)>45.f) return;
-    // Follow the collision terrain, with a body capsule to stop at trunks and rocks.
-    FHitResult Obstacle;
-    const FVector BodyHeight(0,0,95);
-    if (GetWorld()->SweepSingleByChannel(Obstacle,Start+BodyHeight,Ground.ImpactPoint+BodyHeight,
-        FQuat::Identity,SceneContact::Channel,FCollisionShape::MakeCapsule(24,70),
-        FCollisionQueryParams(SCENE_QUERY_STAT(WalkingPilot),false,this))) return;
-    PilotSite=Ground.ImpactPoint;
-    PilotOffset=FVector2D::ZeroVector;
+    const float Speed=PilotMovement::Speed(CanWalkInFlight(),Sprint);
+    const FVector Movement=Direction.GetClampedToMaxSize(1.)*(Speed*FMath::Clamp(DeltaSeconds,0.f,.05f));
+    // Short collision steps preserve slope/step checks at the faster sprint speed.
+    const int32 Steps=FMath::Max(1,FMath::CeilToInt(Movement.Size()/25.));
+    for(int32 I=0;I<Steps;++I)
+    {
+        const FVector Start=PilotPosition(), Desired=Start+Movement/Steps;
+        if (Bungee.State == FBungeeLaunch::EState::Attached && FVector::Distance(Desired, Bungee.Anchor) > Bungee.MaximumLength()*100.)
+        { SiteNotice = TEXT("Allongement maximal · rapproche-toi de l’ancrage"); return; }
+        FHitResult Ground;
+        if (!FindPilotGround(Desired,Ground) || Ground.ImpactNormal.Z<.55f) return;
+        FVector Reached;
+        if(!PilotMovement::ResolveStep(GetWorld(),this,Start,Ground.ImpactPoint,Reached)) return;
+        PilotSite=Reached;
+        PilotOffset=FVector2D::ZeroVector;
+    }
 }
 
 void ASlopeFlightPawn::SwitchLaunchSite(int32 Step)
 {
     if (!bMenuOpen || !bModelReady) return;
-    constexpr int32 Count=3;
+    constexpr int32 Count=4;
     const int32 Next=(SelectedSite-1+Step+Count)%Count+1;
-    const FVector Landing=Next==3 ? FVector(Airfield::Pilot,0) : Next==2 ? FVector(ASlopeWorld::ChaletX+430,ASlopeWorld::ChaletY,0)
+    const FVector Landing=Next==4 ? FVector(CirqueSite::Pilot,0) : Next==3 ? FVector(Airfield::Pilot,0) : Next==2 ? FVector(ASlopeWorld::ChaletX+430,ASlopeWorld::ChaletY,0)
                                                                          : FVector(ASlopeWorld::PilotX,ASlopeWorld::PilotY,0);
     FHitResult Ground;
     if (!FindPilotGround(Landing,Ground)) return;
     SelectedSite=Next;
     PilotSite=Ground.ImpactPoint;
     PilotOffset=FVector2D::ZeroVector;
-    LaunchHeading=Next==3 ? 122.f : 0.f;
+    LaunchHeading=Next==4 ? CirqueSite::Heading : Next==3 ? 122.f : 0.f;
     WalkPitch=0;
     bStartedFlight=false;
     SiteNotice.Reset();
@@ -781,11 +845,18 @@ void ASlopeFlightPawn::ApplyModelSettings(FGliderLoading Setting, bool UseAilero
 
 void ASlopeFlightPawn::ResetFlight()
 {
+    ClearGroundPhysics();
+    Bungee.Release();
+    bInBackpack = false;
+    bBungeeSelected = false;
+    InteractionSeconds = 0.f;
+    bInteractionConsumed = true;
+    PlaneVisual->SetHiddenInGame(false, true);
     bNoclip=false;
     Flight.Reset();
     // Historical smoke/contact captures keep their airborne fixture. Interactive
     // sessions and the menu proof always prepare a manual hand launch.
-    bHeldForLaunch = !bSmokeMode || bMenuProof;
+    bHeldForLaunch = !bSmokeMode || bMenuProof || bBungeeProof || bWinchProof;
     ThrowSeconds = -1.f;
     Elevator = Rudder = 0.f;
     if (bHeldForLaunch)
@@ -836,13 +907,36 @@ FTransform ASlopeFlightPawn::HandPose(float Progress) const
 
 void ASlopeFlightPawn::BeginHandLaunch()
 {
-    if (!bModelReady || !bAppearanceReady || bMenuOpen || !bHeldForLaunch || IsThrowing()) return;
+    if (!bModelReady || !bAppearanceReady || bMenuOpen || !bHeldForLaunch || bInBackpack || IsThrowing()) return;
+    if (Bungee.State == FBungeeLaunch::EState::Attached)
+    {
+        const FTransform Pose = BungeeHandPose();
+        if ((!Bungee.IsWinch() && BungeeTension() < Bungee.Stiffness*5.) || !ClearBungeeRoute(PilotPosition()))
+        { SiteNotice = TEXT("Recule pour tendre la ligne et dégage le trajet avant de lancer."); return; }
+        if(Bungee.IsWinch() && (WinchCommand()<.05 || FVector::Distance(PilotPosition(),Bungee.Anchor)*.01<Bungee.MinimumLength()))
+        { SiteNotice=TEXT("Treuil : active la puissance et garde au moins 40 m de ligne avant de lancer."); return; }
+        const FVector TowDirection = (Bungee.Anchor - Pose.GetLocation()).GetSafeNormal2D();
+        if (FVector::DotProduct(TowDirection, FRotator(0,LaunchHeading,0).Vector()) < .7)
+        { SiteNotice = TEXT("Oriente le planeur vers l’ancrage pour lancer."); return; }
+        Bungee.Departure = PilotPosition();
+        LaunchInstallations.RecordLaunch(ActiveBungeeId);
+        SaveBungee();
+        Flight.LaunchFrom(Pose, Pose.GetRotation().GetForwardVector()*8.);
+        bManualWinchPower=Radio.HasAssignment(EGliderControl::WinchPower);
+        Bungee.BeginTow(Pose.GetLocation(),Flight.Loading().MassGrams*.001);
+        bHeldForLaunch = false;
+        PreviousPose = Pose;
+        TimeBank = 0.;
+        SiteNotice = Bungee.IsWinch()?TEXT("Treuil en marche · cabre progressivement · E pour larguer"):TEXT("Montée à l’élastique · piloter la profondeur · E pour larguer");
+        return;
+    }
     bInspectMeadow = false;
     ThrowSeconds = 0.f;
 }
 
 void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
 {
+    if(bGroundPhysics) { UpdateGroundPhysics(DeltaSeconds); return; }
     if (!bModelReady || bMenuOpen || bNoclip) return;
     const double Aileron = SelectedModel >= 2 ? Radio.SteeringCommand(!AileronSteering[SelectedModel]) : 0.;
     if (bHeldForLaunch)
@@ -854,7 +948,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         WeatherSeconds+=Dt;
         if (IsThrowing()) ThrowSeconds+=Dt;
         const float Duration = UsesDiscusLaunch() ? DiscusDuration : .30f;
-        const FTransform Pose=HandPose(IsThrowing() ? ThrowSeconds/Duration : 0.f);
+        const FTransform Pose = Bungee.State == FBungeeLaunch::EState::Attached ? BungeeHandPose() : HandPose(IsThrowing() ? ThrowSeconds/Duration : 0.f);
         Flight.StopAt(Pose);
         RidgeLift=ValleyAir::SampleGlider(Flight,WeatherSeconds);
         PreviousPose=Pose;
@@ -893,18 +987,17 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         Flight.AdvanceFlaps(Radio.Command(EGliderControl::Flaps),FGliderDynamics::TimeStep,IsControlInUse(EGliderControl::Butterfly) ? Radio.Command(EGliderControl::Butterfly) : 0.);
         Flight.AdvanceSpoilers(Radio.Command(EGliderControl::Spoilers),FGliderDynamics::TimeStep);
         const double Throttle = Radio.Command(EGliderControl::MotorCut) > .5f ? 0. : Radio.Command(EGliderControl::Motor);
-        Flight.Step(Elevator,-Rudder,Aileron,Throttle);
+        Flight.Step(Elevator,-Rudder,Aileron,Throttle,BungeeForceNED());
         RidgeLift = ValleyAir::SampleGlider(Flight, WeatherSeconds);
         ++StepsThisSecond;
         FTransform Contact;
+        FHitResult Impact;
         const FHangarEntry& Entry = Aircraft[SelectedModel];
         const FVector2D SizeScale((Entry.BodyLengthCm > 0. ? Entry.BodyLengthCm : Entry.LengthCm)/Aircraft[0].LengthCm, Entry.SpanCm/Aircraft[0].SpanCm);
         if (SceneContact::SweepTopy(GetWorld(),this,PreviousPose,Flight.WorldPose(),Contact,ContactKind,
-            FuselageCentre,SizeScale,Entry.WingRisePerSpan,Entry.Wheel,Entry.TipSweepCm))
+            FuselageCentre,SizeScale,Entry.WingRisePerSpan,Entry.Wheel,Entry.TipSweepCm,&Impact))
         {
-            Flight.StopAt(Contact);
-            PreviousPose=Contact;
-            TimeBank=0.;
+            BeginGroundPhysics(Contact,Impact,(Entry.BodyLengthCm>0.?Entry.BodyLengthCm:Entry.LengthCm),Entry.SpanCm,Entry.WingRisePerSpan,Entry.TipSweepCm,Entry.Wheel);
             UE_LOG(LogTemp,Display,TEXT("NATIVE_FLIGHT %d hit %s"),FlightId,*ContactKind.ToString());
             break;
         }
@@ -916,6 +1009,20 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
     FTransform Display;
     Display.Blend(PreviousPose,Current,TimeBank/FGliderDynamics::TimeStep);
     SetActorTransform(Display);
+}
+
+void ASlopeFlightPawn::StopFlightAt(const FTransform& Contact)
+{
+    Bungee.Release();
+    Flight.StopAt(Contact);
+    PreviousPose = Contact;
+    TimeBank = 0.;
+    FlightView = EFlightView::Ground;
+    // Walking resumes looking at the aircraft where it landed, preserving the
+    // ground camera bearing instead of restoring the old take-off direction.
+    const FRotator Look = (Contact.GetLocation()-PilotPosition()-FVector(0,0,170)).Rotation();
+    LaunchHeading = Look.Yaw;
+    WalkPitch = FMath::Clamp(Look.Pitch-7.f,-80.f,80.f);
 }
 
 void ASlopeFlightPawn::Tick(float DeltaSeconds)
@@ -933,7 +1040,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
             UE_LOG(LogTemp,Display,TEXT("AIRCRAFT_TEXTURES ready: %s, %d textures"),ModelName(),AircraftTextures.Num());
         }
     }
-    Radio.Poll(Cast<APlayerController>(GetController()),bMenuOpen);
+    Radio.Poll(Cast<APlayerController>(GetController()),bMenuOpen,true);
     if (!Radio.EditingKeyboard() && !Radio.HasDevice() && (RadioScanTime += DeltaSeconds) >= 3.f)
     {
         RadioScanTime = 0.f;
@@ -945,7 +1052,8 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (!Menu.IsValid()) OpenMenu();
         else Menu->UpdateStartupPoster();
     }
-    else if (!bContactProof) ReadControls(DeltaSeconds);
+    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof) ReadControls(DeltaSeconds);
+    UpdateEquipment(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
     UpdateFlightAudio(DeltaSeconds);
     if (bModelReady && !bMenuOpen && !bNoclip && bShowWindTrails)
@@ -968,6 +1076,11 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
     if (bSmokeMode || bCaptureSite)
     {
         SmokeElapsed += DeltaSeconds;
+        if (bBungeeProof) { TestBungee(SmokeElapsed); return; }
+        if (bWinchProof) { TestWinch(SmokeElapsed); return; }
+        if (bLandingProof) { TestLanding(SmokeElapsed); return; }
+        if (bPilotProof) { TestPilotMovement(SmokeElapsed); return; }
+        if (bCirqueProof) { TestCirque(SmokeElapsed); return; }
         if (bMenuProof) { TestMenu(SmokeElapsed); return; }
         if (bContactProof && Flight.IsStopped() && ContactKind==TEXT("tree") && ProofFlight==0)
         {

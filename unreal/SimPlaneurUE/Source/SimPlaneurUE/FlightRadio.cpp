@@ -1,4 +1,6 @@
 #include "FlightRadio.h"
+#include "PilotMovement.h"
+#include "Algo/AnyOf.h"
 #include "RadioWindows.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
@@ -112,6 +114,31 @@ void FFlightRadio::LoadProfile(FProfile& P,bool Keyboard)
         if (GConfig->GetString(*Sec,S.Id,Saved,SettingsIni) && Saved.ParseIntoArray(F,TEXT("|"),false)==4)
             B={FName(*F[0]),FName(*F[1]),F[2]==TEXT("1"),F[3]==TEXT("1")};
     }
+    // Migrate only the former stock shortcuts once. Custom bindings remain intact.
+    int32 ShortcutVersion = 0;
+    if (Keyboard && (!GConfig->GetInt(*Sec,TEXT("ShortcutVersion"),ShortcutVersion,SettingsIni) || ShortcutVersion < 1))
+    {
+        struct FOldKey { A Action; const TCHAR* Key; };
+        const FOldKey OldKeys[] = {{A::Relaunch,TEXT("R")},{A::Camera,TEXT("C")},
+            {A::WindTrails,TEXT("F")},{A::Noclip,TEXT("N")},{A::Vario,TEXT("K")}};
+        for (const auto& Old : OldKeys)
+        {
+            auto& Binding = P.Bindings[int32(Old.Action)];
+            const FName Target(ControlSpec(Old.Action).KeyPlus);
+            const bool Occupied = Algo::AnyOf(P.Bindings,[&](const FControlBinding& Other)
+                { return &Other != &Binding && (Other.Plus == Target || Other.Minus == Target); });
+            if (Binding.Plus != FName(Old.Key) || Occupied) continue;
+            Binding.Plus = Target;
+            const FString Saved = FString::Printf(TEXT("%s|%s|%d|%d"),*Binding.Plus.ToString(),*Binding.Minus.ToString(),Binding.Inverted,Binding.Toggle);
+            GConfig->SetString(*Sec,ControlSpec(Old.Action).Id,*Saved,SettingsIni);
+        }
+        GConfig->SetInt(*Sec,TEXT("ShortcutVersion"),1,SettingsIni);
+        GConfig->Flush(false,SettingsIni);
+    }
+    // Retire the diagnostic panel binding, including previously saved F1/radio
+    // assignments. F1 now selects the winch.
+    P.Bindings[int32(A::Instruments)]={};
+    if(GConfig->RemoveKey(*Sec,ControlSpec(A::Instruments).Id,SettingsIni)) GConfig->Flush(false,SettingsIni);
 }
 void FFlightRadio::SaveProfile()
 {
@@ -285,8 +312,9 @@ void FFlightRadio::FeedFrame(const FRadioFrame& Next)
     bMoved |= FMath::Abs(Stick.Outputs[int32(A::Rudder)].Value)>.03f || FMath::Abs(Stick.Outputs[int32(A::Elevator)].Value)>.03f
         || FMath::Abs(Stick.Outputs[int32(A::Aileron)].Value)>.03f;
 }
-void FFlightRadio::Poll(APlayerController* PC,bool InMenu)
+void FFlightRadio::Poll(APlayerController* PC,bool InMenu,bool ReserveWalkingKeys)
 {
+    bWalkingKeys=ReserveWalkingKeys && !InMenu;
     if (HasDevice())
     {
         FRadioFrame Next;
@@ -306,7 +334,12 @@ void FFlightRadio::Evaluate(FProfile& P,const TSet<FName>& Down,bool Keyboard)
 {
     for (int32 I=0;I<ControlCount;++I)
     {
-        auto& O=P.Outputs[I]; const auto& B=P.Bindings[I]; const T Type=ControlSpec(A(I)).Type;
+        auto& O=P.Outputs[I]; auto B=P.Bindings[I]; const T Type=ControlSpec(A(I)).Type;
+        if(Keyboard && bWalkingKeys)
+        {
+            if(PilotMovement::IsWalkingKey(B.Plus)) B.Plus=NAME_None;
+            if(PilotMovement::IsWalkingKey(B.Minus)) B.Minus=NAME_None;
+        }
         const int32 Axis=Keyboard?INDEX_NONE:AxisIndex(B.Plus);
         const float Physical=Axis>=0?Frame.Axes[Axis]:0.f;
         const float V=B.Inverted?-Physical:Physical;

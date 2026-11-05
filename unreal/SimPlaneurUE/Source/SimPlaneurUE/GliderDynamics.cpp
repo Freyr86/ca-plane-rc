@@ -56,6 +56,7 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
     if (!FFileHelper::LoadFileToString(Data,*Filename) ||
         !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Data),Json) || !Json) return false;
     FGliderDynamics M;
+    if(Json->HasField(TEXT("impact_resistance")) && (!Number(Json,TEXT("impact_resistance"),M.ImpactResistance) || M.ImpactResistance<=0.)) return false;
     double Schema;
     if (!Number(Json,TEXT("schema"),Schema) || Schema!=1. ||
         !Number(Json,TEXT("mass_kg"),M.Mass) || !Number(Json,TEXT("wing_area_m2"),M.Area) ||
@@ -234,7 +235,7 @@ void FGliderDynamics::Step(double Elevator,double Rudder)
 {
     Step(Elevator,Rudder,0.);
 }
-void FGliderDynamics::Step(double Elevator,double Rudder,double Aileron,double Throttle)
+void FGliderDynamics::Step(double Elevator,double Rudder,double Aileron,double Throttle,const FVector& TowForceNED)
 {
     if (Stopped) return;
     if (LaunchTrimTimeLeft > 0.)
@@ -251,10 +252,12 @@ void FGliderDynamics::Step(double Elevator,double Rudder,double Aileron,double T
     FVector Accel,Angular;
     AppliedMotorWatts = Motor.Enabled ? Motor.Watts*FMath::Clamp(Throttle,0.,1.) : 0.;
     Accelerations(Attitude,Velocity,Omega,-Position.Z,.5*(OldLeft+OldRight),.5*(OldLeft-OldRight),OldAileron,AppliedMotorWatts,Accel,Angular);
+    Accel += TowForceNED / Mass;
     const FVector MidVelocity=Velocity+Half*Accel, MidRates=Omega+Half*Angular;
     const FQuat MidAttitude=Turn(Attitude,Omega,Half);
     Accelerations(MidAttitude,MidVelocity,MidRates,-Position.Z-Half*Velocity.Z,
         .25*(OldLeft+OldRight+Left+Right),.25*(OldLeft-OldRight+Left-Right),.5*(OldAileron+AileronServo),AppliedMotorWatts,Accel,Angular);
+    Accel += TowForceNED / Mass;
     Position+=TimeStep*MidVelocity;
     Velocity+=TimeStep*Accel;
     Attitude=Turn(Attitude,MidRates,TimeStep);

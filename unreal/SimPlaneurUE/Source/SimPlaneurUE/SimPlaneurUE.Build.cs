@@ -7,8 +7,8 @@ public class SimPlaneurUE : ModuleRules
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[]
         {
-            "Core", "CoreUObject", "Engine", "InputCore",
-            "Json",
+            "Core", "CoreUObject", "Engine", "InputCore", "PhysicsCore",
+            "Json", "RenderCore",
             "ProceduralMeshComponent", "Slate", "SlateCore"
         });
 

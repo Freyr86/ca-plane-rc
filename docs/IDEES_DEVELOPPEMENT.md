@@ -1,14 +1,16 @@
 # Idées de développement restantes
 
-Carnet de Ça plane ! · Mise à jour du 3 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
+Carnet de Ça plane ! · Mise à jour du 4 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
 
 ## Vol et multijoueur
 
+- **Repère visuel en bout d’aile.** Proposer deux traînées discrètes et activables qui dessinent la trajectoire récente des saumons par rapport au sol. Les laisser s’effacer après une durée fixe. Depuis la caméra au sol, à vitesse air égale, la trace sera plus courte face au vent et plus longue vent arrière. Par vent de travers, elle rendra la dérive visible.
 - **Entraînement F3F.** Installer deux bases distantes de 100 m, chronométrer dix longueurs, signaler les passages valides par un bip et permettre de retenter la manche avec le même vent. Évaluer le VJX 2022 sur ce parcours avant de décider s’il faut un autre planeur.
-- **Départs au treuil et au sandow.** Simuler la mise en tension, la montée et le largage pour ces deux modes de lancement.
 - **Remorquage en solo.** Confier l’avion remorqueur à l’IA et laisser au pilote du planeur la commande de largage.
 - **Vol à plusieurs sur la pente.** Tester une session privée avec deux pilotes au sol, des trajectoires fluides et des ascendances partagées.
 - **Remorqueur piloté en multijoueur.** Un joueur pilote l’avion tracteur, l’autre le planeur. Synchroniser la tension du câble et le largage pour les deux pilotes.
+
+- **Modes simulateur et exploration.** Prévoir un mode de vol direct et un mode de découverte à pied des sites, avec planeur et matériel transportés dans le sac.
 
 ## Hangar et crédits
 

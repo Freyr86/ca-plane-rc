@@ -1,6 +1,7 @@
 {
   "model": "Snipe 2 Regular DLG",
   "schema": 1,
+  "impact_resistance": 0.8,
   "mass_kg": 0.249,
   "reference_cg_from_root_le_mm": 68,
   "conventional_tail": true,

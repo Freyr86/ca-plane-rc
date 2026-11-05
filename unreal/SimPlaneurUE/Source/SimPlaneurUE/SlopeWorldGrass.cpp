@@ -1,6 +1,9 @@
 #include "SlopeWorld.h"
 #include "Airfield.h"
 #include "ValleyLandscape.h"
+#include "CirqueLandscape.h"
+#include "CirqueSite.h"
+#include "CirqueWall.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -25,10 +28,10 @@ namespace
         const float Step=ASlopeWorld::TerrainGridSpacing(X,Y);
         const float X0=FMath::FloorToFloat(X/Step)*Step, Y0=FMath::FloorToFloat(Y/Step)*Step;
         const float U=(X-X0)/Step, V=(Y-Y0)/Step;
-        const float B=ASlopeWorld::TerrainHeightCm(X0,Y0+Step);
-        const float C=ASlopeWorld::TerrainHeightCm(X0+Step,Y0);
+        const float B=ASlopeWorld::TerrainVertexHeightCm(X0,Y0+Step);
+        const float C=ASlopeWorld::TerrainVertexHeightCm(X0+Step,Y0);
         const bool Lower = U+V<=1.f;
-        const float Corner = Lower ? ASlopeWorld::TerrainHeightCm(X0,Y0) : ASlopeWorld::TerrainHeightCm(X0+Step,Y0+Step);
+        const float Corner = Lower ? ASlopeWorld::TerrainVertexHeightCm(X0,Y0) : ASlopeWorld::TerrainVertexHeightCm(X0+Step,Y0+Step);
         const float Dx=Lower ? C-Corner : Corner-B, Dy=Lower ? B-Corner : Corner-C;
         Normal=FVector(-Dx,-Dy,Step).GetSafeNormal();
         const float Z=Lower ? Corner+Dx*U+Dy*V : Corner+Dx*(U-1)+Dy*(V-1);
@@ -153,11 +156,16 @@ void ASlopeWorld::PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail)
                 const float FromPilot=FVector2D(X-PilotX,Y-PilotY).Size();
                 const FVector2D Field=Airfield::Local(X,Y);
                 const bool ByStrip=FMath::Abs(Field.X)<Airfield::HalfLength+900. && FMath::Abs(Field.Y)<Airfield::HutSide+750.;
-                const bool Mown=FMath::Abs(Field.X)<Airfield::HalfLength && FMath::Abs(Field.Y)<Airfield::HalfWidth;
+                const bool Mown=(FMath::Abs(Field.X)<Airfield::HalfLength && FMath::Abs(Field.Y)<Airfield::HalfWidth)
+                    || CirqueSite::ShortGrass(X,Y);
+                const auto CirqueSurface=Cirque::Sample(X,Y);
+                const bool InCirque=CirqueSurface.Influence>.01f;
+                if(InCirque && (CirqueSite::FurnitureFootprint(X,Y) || CirqueWall::Footprint(X,Y,12.f))) continue;
+                if(InCirque && (CirqueSurface.Cliff>.08f || Random.FRand()<CirqueSurface.Scree*.99f)) continue;
                 if (FMath::Abs(Field.X)<230. && FMath::Abs(Field.Y-Airfield::HutSide)<200.) continue;
                 if (Detail)
                 {
-                    if (!ByStrip && (X< -135000 || X>65000 || Y< -75000 || Y>125000)) continue;
+                    if (!ByStrip && !InCirque && (X< -135000 || X>65000 || Y< -75000 || Y>125000)) continue;
                     const float Existing=FromPilot<4100 ? FMath::Square(1350.f/FMath::Max(1350.f,FromPilot)) : 0.f;
                     if (Random.FRand()<Existing) continue;
                 }
@@ -166,7 +174,7 @@ void ASlopeWorld::PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail)
                 FVector Root=RootAt(X,Y,Normal);
                 if (Root.Z<Valley::WaterLevel+60 || Normal.Z<.75f) continue;
                 const bool InLake=X>=-135000 && X<=65000 && Y>=-75000 && Y<=125000;
-                const float Shade=ByStrip ? 0.f : InLake ? CrownCover(X,Y) : (Valley::Woodland(X,Y)>.61f ? .82f : 0.f);
+                const float Shade=ByStrip ? 0.f : InLake || InCirque ? CrownCover(X,Y) : (Valley::Woodland(X,Y)>.61f ? .82f : 0.f);
                 if (Random.FRand()<Shade*.85f) continue;
                 const float A=Random.FRand()*2*PI;
                 const FQuat Rot=FRotationMatrix::MakeFromZX(Normal,FVector(FMath::Cos(A),FMath::Sin(A),0)).ToQuat();

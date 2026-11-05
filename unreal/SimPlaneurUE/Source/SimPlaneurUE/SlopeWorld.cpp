@@ -2,6 +2,8 @@
 #include "Airfield.h"
 #include "SlopeFlightPawn.h"
 #include "ValleyLandscape.h"
+#include "CirqueLandscape.h"
+#include "CirqueWall.h"
 #include "SceneContact.h"
 #include "GliderDynamics.h"
 #include "ValleyAir.h"
@@ -34,6 +36,14 @@ namespace
     const FVector2D AirfieldMin(20000.,-150000.);
     constexpr float AirfieldSize=25000.f, AirfieldStep=250.f;
     const FBox2D AirfieldBounds(AirfieldMin,AirfieldMin+FVector2D(AirfieldSize));
+    // Local detail only: the outer 25 m terrain is replaced, not overlaid. Both
+    // grids share their border vertices, avoiding cracks and duplicate collision.
+    const FVector2D CirqueMin(155000.,47500.);
+    constexpr float CirqueSize=225000.f, CirqueStep=500.f;
+    constexpr int32 CirqueCells=450, CliffSubdivisions=5;
+    constexpr float CliffStep=CirqueStep/CliffSubdivisions;
+    static_assert(CirqueCells*CirqueStep==CirqueSize);
+    const FBox2D CirqueBounds(CirqueMin,CirqueMin+FVector2D(CirqueSize));
     const FVector2D PatchMin(FMath::GridSnap(ASlopeWorld::PilotX-PatchSize/2,CoarseStep),
                              FMath::GridSnap(ASlopeWorld::PilotY-PatchSize/2,CoarseStep));
 
@@ -42,6 +52,46 @@ namespace
         return LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Meadow/M_AlpineSward.M_AlpineSward"));
     }
 
+    const TArray<uint8>& CirqueRefinement()
+    {
+        // A one-cell halo puts the 1 m / 5 m joins outside the steep wall. Cache
+        // this immutable map so grass and collision proofs use the exact mesh.
+        static const TArray<uint8> Refined=[]
+        {
+            TArray<uint8> Core, Result;
+            Core.Init(0,CirqueCells*CirqueCells);
+            Result.Init(0,CirqueCells*CirqueCells);
+            for(int32 I=0;I<CirqueCells;++I)
+                for(int32 J=0;J<CirqueCells;++J)
+                {
+                    const float X=CirqueMin.X+I*CirqueStep,Y=CirqueMin.Y+J*CirqueStep;
+                    const FVector2D P(X+CirqueStep*.5f-Cirque::CenterX,Y+CirqueStep*.5f-Cirque::CenterY);
+                    // The irregular lip stays within this generous radial band.
+                    if(P.SizeSquared()<FMath::Square(Cirque::RimRadius-20000.f)
+                        || P.SizeSquared()>FMath::Square(Cirque::RimRadius+20000.f)) continue;
+                    bool Wall=Cirque::Sample(X+CirqueStep*.5f,Y+CirqueStep*.5f).Cliff>.005f;
+                    for(int32 U=0;U<=1 && !Wall;++U)
+                        for(int32 V=0;V<=1 && !Wall;++V)
+                            Wall=Cirque::Sample(X+U*CirqueStep,Y+V*CirqueStep).Cliff>.005f;
+                    Core[I*CirqueCells+J]=Wall;
+                }
+            for(int32 I=1;I<CirqueCells-1;++I)
+                for(int32 J=1;J<CirqueCells-1;++J)
+                    for(int32 U=-1;U<=1;++U)
+                        for(int32 V=-1;V<=1;++V)
+                            Result[I*CirqueCells+J]|=Core[(I+U)*CirqueCells+J+V];
+            return Result;
+        }();
+        return Refined;
+    }
+
+    bool RefineCirqueCell(float X,float Y)
+    {
+        const int32 I=FMath::FloorToInt((X-CirqueMin.X)/CirqueStep);
+        const int32 J=FMath::FloorToInt((Y-CirqueMin.Y)/CirqueStep);
+        return I>=0 && I<CirqueCells && J>=0 && J<CirqueCells
+            && CirqueRefinement()[I*CirqueCells+J]!=0;
+    }
 }
 
 ASlopeWorld::ASlopeWorld()
@@ -151,6 +201,8 @@ void ASlopeWorld::OnConstruction(const FTransform& Transform)
     if (GetComponentsByTag(UActorComponent::StaticClass(), TEXT("GeneratedScenery")).Num() == 0)
     {
         AddScenery();
+        AddCirqueScenery();
+        CirqueWall::Build(this);
         BuildChalet(-74000.,8500.,false);
         BuildChalet(ChaletX,ChaletY,true);
     }
@@ -212,14 +264,41 @@ void ASlopeWorld::BuildTerrain()
     BuildTerrainSection(1, int32(PatchSize/FineStep), FineStep, PatchMin, FBox2D(ForceInit),CoarseStep);
     BuildTerrainSection(2, 448, MountainStep, FVector2D(-560000,-560000),FBox2D(ValleyMin,-ValleyMin),0.f);
     BuildTerrainSection(3,int32(AirfieldSize/AirfieldStep),AirfieldStep,AirfieldMin,FBox2D(ForceInit),MountainStep);
+    BuildTerrainSection(4,int32(CirqueSize/CirqueStep),CirqueStep,CirqueMin,FBox2D(ForceInit),MountainStep);
     BuildLake();
 }
 
 float ASlopeWorld::TerrainGridSpacing(float X,float Y)
 {
+    if (CirqueBounds.IsInside(FVector2D(X,Y))) return RefineCirqueCell(X,Y)?CliffStep:CirqueStep;
     if (AirfieldBounds.IsInside(FVector2D(X,Y))) return AirfieldStep;
     if (X>=PatchMin.X && X<PatchMin.X+PatchSize && Y>=PatchMin.Y && Y<PatchMin.Y+PatchSize) return FineStep;
     return FMath::Abs(X)<TerrainSizeCm/2 && FMath::Abs(Y)<TerrainSizeCm/2 ? CoarseStep : MountainStep;
+}
+
+float ASlopeWorld::TerrainVertexHeightCm(float X,float Y)
+{
+    const FVector2D High=CirqueMin+FVector2D(CirqueSize);
+    if(X<CirqueMin.X || X>High.X || Y<CirqueMin.Y || Y>High.Y) return TerrainHeightCm(X,Y);
+    auto AlongY=[&](float Step)
+    {
+        const float Y0=FMath::FloorToFloat(Y/Step)*Step;
+        return FMath::Lerp(TerrainHeightCm(X,Y0),TerrainHeightCm(X,Y0+Step),(Y-Y0)/Step);
+    };
+    auto AlongX=[&](float Step)
+    {
+        const float X0=FMath::FloorToFloat(X/Step)*Step;
+        return FMath::Lerp(TerrainHeightCm(X0,Y),TerrainHeightCm(X0+Step,Y),(X-X0)/Step);
+    };
+    if(FMath::IsNearlyEqual(X,float(CirqueMin.X),.01f) || FMath::IsNearlyEqual(X,float(High.X),.01f)) return AlongY(MountainStep);
+    if(FMath::IsNearlyEqual(Y,float(CirqueMin.Y),.01f) || FMath::IsNearlyEqual(Y,float(High.Y),.01f)) return AlongX(MountainStep);
+    const float X0=FMath::FloorToFloat(X/CirqueStep)*CirqueStep,Y0=FMath::FloorToFloat(Y/CirqueStep)*CirqueStep;
+    const bool OnX=FMath::IsNearlyEqual(X,X0,.01f),OnY=FMath::IsNearlyEqual(Y,Y0,.01f);
+    // Both endpoints of every 5 m edge retain the analytic height. Only the
+    // intervening 1 m vertices snap when the neighbouring cell is not refined.
+    if(OnX && !OnY && RefineCirqueCell(X0-CirqueStep,Y0)!=RefineCirqueCell(X0,Y0)) return AlongY(CirqueStep);
+    if(OnY && !OnX && RefineCirqueCell(X0,Y0-CirqueStep)!=RefineCirqueCell(X0,Y0)) return AlongX(CirqueStep);
+    return TerrainHeightCm(X,Y);
 }
 
 void ASlopeWorld::BuildLake()
@@ -256,59 +335,105 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
     TArray<FLinearColor> Colors;
     TArray<FProcMeshTangent> Tangents;
     const int32 Points = Cells + 1;
-    Vertices.Reserve(Points * Points);
-    Normals.Reserve(Points * Points);
-    Colors.Reserve(Points * Points);
-    UVs.Reserve(Points * Points);
+    int32 RefinementCount=0;
+    if(Section==4)
+        for(uint8 Cell:CirqueRefinement()) RefinementCount+=Cell!=0;
+    const int32 Capacity=Points*Points+RefinementCount*FMath::Square(CliffSubdivisions+1);
+    Vertices.Reserve(Capacity);
+    Normals.Reserve(Capacity);
+    Colors.Reserve(Capacity);
+    UVs.Reserve(Capacity);
+    if(Section==4) Tangents.Reserve(Capacity);
+    Triangles.Reserve(Cells*Cells*6+RefinementCount*(CliffSubdivisions*CliffSubdivisions-1)*6);
 
+    auto AddVertex=[&](float X,float Y,float H)
+    {
+        // Use the same derivative at duplicated cell-edge vertices so local
+        // refinement changes geometry without introducing a shading seam.
+        float Step=FMath::Max(50.f,Spacing*.3f);
+        if(Section==4)
+        {
+            const float ToEdge=FMath::Min(FMath::Min(X-float(CirqueMin.X),float(CirqueMin.X)+CirqueSize-X),
+                FMath::Min(Y-float(CirqueMin.Y),float(CirqueMin.Y)+CirqueSize-Y));
+            Step=FMath::Lerp(MountainStep*.3f,50.f,FMath::SmoothStep(0.f,MountainStep,ToEdge));
+        }
+        FVector Normal(
+            TerrainHeightCm(X-Step,Y)-TerrainHeightCm(X+Step,Y),
+            TerrainHeightCm(X,Y-Step)-TerrainHeightCm(X,Y+Step),2.f*Step);
+        Normal.Normalize();
+        Vertices.Emplace(X,Y,H);
+        Normals.Add(Normal);
+        if(Section==4)
+        {
+            FVector Tangent=FVector::VectorPlaneProject(FVector::ForwardVector,Normal).GetSafeNormal();
+            if(Tangent.IsNearlyZero()) Tangent=FVector::VectorPlaneProject(FVector::RightVector,Normal).GetSafeNormal();
+            Tangents.Emplace(Tangent,false);
+        }
+        const FVector2D Local=Airfield::Local(X,Y);
+        UVs.Add(Section==3?FVector2D(Local.X/Airfield::HalfLength,Local.Y/Airfield::HalfWidth):FVector2D(X,Y)/4000.);
+        const float AlpineRock=FMath::SmoothStep(.12f,.42f,1.f-float(Normal.Z))*FMath::SmoothStep(9000.f,22000.f,H);
+        const float FaceRock=(1.f-FMath::SmoothStep(300.f,780.f,FMath::Abs(CliffOffset(X,Y))))
+            *(1.f-FMath::SmoothStep(9000.f,17000.f,FMath::Abs(X-PilotX)))
+            *FMath::SmoothStep(.24f,.55f,1.f-float(Normal.Z));
+        const auto CirqueSurface=Cirque::Sample(X,Y);
+        const float Rock=FMath::Max(FMath::Max(AlpineRock,FaceRock),FMath::Max(CirqueSurface.Cliff,CirqueSurface.Scree));
+        // The limestone rim is a grassy plateau, not the bare alpine zone
+        // selected solely by altitude elsewhere in the mountain range.
+        const float Alpine=FMath::SmoothStep(17300.f,31600.f,H)*(1.f-CirqueSurface.Meadow);
+        const float Shore=(1.f-FMath::SmoothStep(20.f,520.f,H-Valley::WaterLevel))
+            *(1.f-FMath::SmoothStep(1000.f,3500.f,Valley::ShoreDistance(X,Y)));
+        const float Wood=FMath::SmoothStep(.43f,.68f,Valley::Woodland(X,Y))*(1.f-Alpine);
+        Colors.Add(FLinearColor(Wood,FMath::Max(Rock,Alpine*.85f),Shore,Section==4?CirqueSurface.Scree:1.f));
+    };
     for (int32 XIndex = 0; XIndex < Points; ++XIndex)
     {
         for (int32 YIndex = 0; YIndex < Points; ++YIndex)
         {
             const float X = Origin.X + XIndex * Spacing;
             const float Y = Origin.Y + YIndex * Spacing;
-            float H = TerrainHeightCm(X, Y);
+            float H = Section==4?TerrainVertexHeightCm(X,Y):TerrainHeightCm(X,Y);
             // Snap the border of the fine mesh to the linear edges of the coarse triangles.
-            if (BorderStep > 0.f && (XIndex == 0 || XIndex == Cells))
+            if (Section!=4 && BorderStep > 0.f && (XIndex == 0 || XIndex == Cells))
             {
                 const float Y0 = FMath::FloorToFloat(Y/BorderStep)*BorderStep;
                 H = FMath::Lerp(TerrainHeightCm(X,Y0),TerrainHeightCm(X,Y0+BorderStep),(Y-Y0)/BorderStep);
             }
-            else if (BorderStep > 0.f && (YIndex == 0 || YIndex == Cells))
+            else if (Section!=4 && BorderStep > 0.f && (YIndex == 0 || YIndex == Cells))
             {
                 const float X0 = FMath::FloorToFloat(X/BorderStep)*BorderStep;
                 H = FMath::Lerp(TerrainHeightCm(X0,Y),TerrainHeightCm(X0+BorderStep,Y),(X-X0)/BorderStep);
             }
-            const float Step = FMath::Max(50.f,Spacing*.3f);
-            FVector Normal(
-                TerrainHeightCm(X - Step, Y) - TerrainHeightCm(X + Step, Y),
-                TerrainHeightCm(X, Y - Step) - TerrainHeightCm(X, Y + Step),
-                2.0f * Step);
-            Normal.Normalize();
-            Vertices.Add(FVector(X, Y, H));
-            Normals.Add(Normal);
-            // The site material reads runway-relative coordinates; the meadow already uses world-space UVs.
-            const FVector2D Local=Airfield::Local(X,Y);
-            UVs.Add(Section==3 ? FVector2D(Local.X/Airfield::HalfLength,Local.Y/Airfield::HalfWidth) : FVector2D(X,Y)/4000.);
-            const float AlpineRock = FMath::SmoothStep(.12f,.42f,1.f-float(Normal.Z)) * FMath::SmoothStep(9000.f,22000.f,H);
-            const float FaceRock=(1.f-FMath::SmoothStep(300.f,780.f,FMath::Abs(CliffOffset(X,Y))))
-                *(1.f-FMath::SmoothStep(9000.f,17000.f,FMath::Abs(X-PilotX)))
-                *FMath::SmoothStep(.24f,.55f,1.f-float(Normal.Z));
-            const float Rock=FMath::Max(AlpineRock,FaceRock);
-            const float Alpine = FMath::SmoothStep(17300.f,31600.f,H);
-            const float Shore = (1.f-FMath::SmoothStep(20.f,520.f,H-Valley::WaterLevel))*(1.f-FMath::SmoothStep(1000.f,3500.f,Valley::ShoreDistance(X,Y)));
-            const float Wood = FMath::SmoothStep(.43f,.68f,Valley::Woodland(X,Y))*(1.f-Alpine);
-            Colors.Add(FLinearColor(Wood,FMath::Max(Rock,Alpine*.85f),Shore,1));
+            AddVertex(X,Y,H);
         }
     }
+    int32 RefinedCells=0;
     for (int32 XIndex = 0; XIndex < Cells; ++XIndex)
     {
         for (int32 YIndex = 0; YIndex < Cells; ++YIndex)
         {
             const float X = Origin.X + XIndex*Spacing, Y = Origin.Y + YIndex*Spacing;
             const FVector2D Mid(X+Spacing*.5f,Y+Spacing*.5f);
-            if ((Hole.bIsValid && Hole.IsInside(Mid)) || (Section==2 && AirfieldBounds.IsInside(Mid)))
+            if ((Hole.bIsValid && Hole.IsInside(Mid)) || (Section==2 && (AirfieldBounds.IsInside(Mid) || CirqueBounds.IsInside(Mid))))
                 continue;
+            if(Section==4 && RefineCirqueCell(X,Y))
+            {
+                constexpr int32 FinePoints=CliffSubdivisions+1;
+                const int32 First=Vertices.Num();
+                for(int32 I=0;I<FinePoints;++I)
+                    for(int32 J=0;J<FinePoints;++J)
+                    {
+                        const float U=X+I*CliffStep,V=Y+J*CliffStep;
+                        AddVertex(U,V,TerrainVertexHeightCm(U,V));
+                    }
+                for(int32 I=0;I<CliffSubdivisions;++I)
+                    for(int32 J=0;J<CliffSubdivisions;++J)
+                    {
+                        const int32 A=First+I*FinePoints+J,B=A+1,C=A+FinePoints;
+                        Triangles.Append({A,B,C,B,C+1,C});
+                    }
+                ++RefinedCells;
+                continue;
+            }
             const int32 A = XIndex * Points + YIndex;
             const int32 B = A + 1;
             const int32 C = A + Points;
@@ -317,8 +442,29 @@ void ASlopeWorld::BuildTerrainSection(int32 Section, int32 Cells, float Spacing,
             Triangles.Append({A, B, C, B, D, C});
         }
     }
-    Terrain->CreateMeshSection_LinearColor(Section, Vertices, Triangles, Normals, UVs, Colors, Tangents, true, false);
-    Terrain->SetMaterial(Section, Section==3 ? LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Meadow/M_AirfieldSward")) : GroundMaterial());
+    UProceduralMeshComponent* Target=Terrain;
+    if(Section==4)
+    {
+        // Give the distant high-detail patch its own bounds. A section on the
+        // world-sized root would be submitted even when the cirque is offscreen.
+        const auto Existing=GetComponentsByTag(UProceduralMeshComponent::StaticClass(),TEXT("CirqueTerrain"));
+        Target=Existing.Num()?CastChecked<UProceduralMeshComponent>(Existing[0]):nullptr;
+        if(!Target)
+        {
+            Target=NewObject<UProceduralMeshComponent>(this,TEXT("CirqueTerrain"));
+            Target->SetupAttachment(Terrain);
+            Target->SetMobility(EComponentMobility::Static);
+            Target->ComponentTags.Add(TEXT("CirqueTerrain"));
+            SceneContact::Solid(Target,TEXT("ground"));
+            Target->bUseAsyncCooking=false;
+            Target->RegisterComponent();
+        }
+    }
+    Target->CreateMeshSection_LinearColor(Section==4?0:Section, Vertices, Triangles, Normals, UVs, Colors, Tangents, true, false);
+    auto* Material=Section==3 ? LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Meadow/M_AirfieldSward"))
+        : Section==4 ? LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Meadow/M_CirqueSward")) : GroundMaterial();
+    Target->SetMaterial(Section==4?0:Section,Material ? Material : GroundMaterial());
+    if(Section==4) UE_LOG(LogTemp,Display,TEXT("CIRQUE_TERRAIN refined_cells=%d vertices=%d triangles=%d"),RefinedCells,Vertices.Num(),Triangles.Num()/3);
 }
 
 void ASlopeWorld::AddScenery()
@@ -368,7 +514,8 @@ void ASlopeWorld::AddScenery()
             const float X=Centre.X+FMath::Cos(A)*R, Y=Centre.Y+FMath::Sin(A)*R;
             const float Dist=FVector2D(X-PilotX,Y-PilotY).Size();
             if (Dist<6200 || FVector2D(X,Y).Size()<5600) continue;
-            const float Z=TerrainHeightCm(X,Y);
+            const auto CirqueSurface=Cirque::Sample(X,Y);
+            const float Z=CirqueSurface.Influence>0.f ? Valley::NaturalHeight(X,Y) : TerrainHeightCm(X,Y);
             if (Z<Valley::WaterLevel+65.f || Z>27800.f || Random.FRand()<FMath::SmoothStep(15000.f,27800.f,Z)) continue;
             // Preserve the seeded stands around the lake. Outlying stands now
             // use the same detailed trees as the reference stand by the house.
@@ -390,8 +537,11 @@ void ASlopeWorld::AddScenery()
                 || FVector2D::DistSquared(FVector2D(X,Y),Airfield::Hut)<FMath::Square(1500.)) continue;
             if (FVector2D(X-ChaletX-450.f,Y-ChaletY).SizeSquared()<FMath::Square(1550.f) ||
                 FVector2D(X+74000.f,Y-8500.f).SizeSquared()<FMath::Square(1000.f)) continue;
-            Timber[Kind].Emplace(FRotator(0,Yaw,0),FVector(X,Y,Z-Bounds.Min.Z*Scale-(YoungPine ? 3.f : 12.f)),
-                                 FVector(WidthScale,WidthScale,Scale));
+            // Consume the same seeded random sequence before filtering: distant
+            // stands outside the new site retain their previous appearance.
+            if (CirqueSurface.Influence<.15f && CirqueSurface.Cliff<.12f && CirqueSurface.Scree<.20f)
+                Timber[Kind].Emplace(FRotator(0,Yaw,0),FVector(X,Y,TerrainHeightCm(X,Y)-Bounds.Min.Z*Scale-(YoungPine ? 3.f : 12.f)),
+                                     FVector(WidthScale,WidthScale,Scale));
         }
     }
     for (int32 Kind=0;Kind<UE_ARRAY_COUNT(TreeGroups);++Kind) TreeGroups[Kind]->AddInstances(Timber[Kind],false,false,false);

@@ -19,6 +19,7 @@
 #include "InputKeyEventArgs.h"
 #include "SlopeWorld.h"
 #include "Airfield.h"
+#include "CirqueSite.h"
 #include "SceneContact.h"
 #include "EngineUtils.h"
 #include "ValleyLandscape.h"
@@ -63,6 +64,26 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
             nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
     };
+    if (FParse::Param(FCommandLine::Get(),TEXT("EquipmentProof")))
+    {
+        bool OK=true;
+        switch(MenuProofStep)
+        {
+        case 0: OK=Click(TEXT("Settings")) && Click(TEXT("Equipment")); MenuProofMass=BungeeColourIndex; break;
+        case 1: OK=Click(TEXT("COULEUR+")) && BungeeColourIndex!=MenuProofMass; MenuProofMass=BungeeColourIndex; break;
+        case 2: Shot(TEXT("bungee-colour-settings.png")); break;
+        case 3:
+            BungeeColourIndex=-1;
+            LoadBungee();
+            OK=BungeeColourIndex==MenuProofMass && Click(TEXT("Back"));
+            break;
+        default: UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_MENU complete")); FPlatformMisc::RequestExit(false); return;
+        }
+        UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_MENU step=%d success=%d"),MenuProofStep,OK);
+        if(!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
     if (GalleryProof)
     {
         static constexpr struct { const TCHAR* Mesh; const TCHAR* Filename; } Covers[] = {
@@ -179,13 +200,34 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             NoclipPosition=FVector(Airfield::Point(-950,350),PilotSite.Z+390);
             NoclipRotation=(FVector(Airfield::Point(200,Airfield::HutSide),PilotSite.Z+165)-NoclipPosition).Rotation(); break;
         case 21: Shot(TEXT("site-03-cabanon.png")); break;
-        case 22: OpenMenu(); OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==1
+        case 22:
+        {
+            OpenMenu();
+            OK=Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==4
+                && FVector2D::Distance(FVector2D(PilotPosition()),CirqueSite::Pilot)<1.
+                && FMath::Abs(FMath::FindDeltaAngleDegrees(LaunchHeading,CirqueSite::Heading))<.01f;
+            const FTransform First=MenuCameraPose();
+            const double SavedTime=TourTime;
+            TourTime+=12.;
+            const FTransform Later=MenuCameraPose();
+            TourTime=SavedTime;
+            const FVector Eye=First.GetLocation(),NextEye=Later.GetLocation();
+            OK=OK && FVector::Dist(Eye,NextEye)>100.
+                && Eye.Z>ASlopeWorld::TerrainHeightCm(Eye.X,Eye.Y)+849.
+                && NextEye.Z>ASlopeWorld::TerrainHeightCm(NextEye.X,NextEye.Y)+849.;
+            break;
+        }
+        case 23: Shot(TEXT("site-04-accueil.png")); break;
+        case 24: OK=Click(TEXT("OpenMap")) && Click(TEXT("MapCentre")); break;
+        case 25: Shot(TEXT("site-04-carte.png")); break;
+        case 26: OK=Click(TEXT("Back")) && Click(TEXT("SITE DE VOL+")) && LaunchSiteNumber()==1
+                && Click(TEXT("SITE DE VOL-")) && LaunchSiteNumber()==4
                 && Click(TEXT("SITE DE VOL-")) && LaunchSiteNumber()==3 && Click(TEXT("Fly")) && IsWalking(); break;
-        case 23: SendKey(EKeys::SpaceBar,IE_Pressed); break;
-        case 24: OK=!IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone();
+        case 27: SendKey(EKeys::SpaceBar,IE_Pressed); break;
+        case 28: OK=!IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone();
             SendKey(EKeys::SpaceBar,IE_Released); OpenMenu(); OK=OK && Click(TEXT("Credits")); break;
-        case 25: Shot(TEXT("club-credits.png")); break;
-        case 26: OK=Click(TEXT("Back")) && FindTagged(Menu.ToSharedRef(),TEXT("Credits")).IsValid();
+        case 29: Shot(TEXT("club-credits.png")); break;
+        case 30: OK=Click(TEXT("Back")) && FindTagged(Menu.ToSharedRef(),TEXT("Credits")).IsValid();
             FPlatformMisc::RequestExitWithStatus(false,OK?0:3); break;
         }
         UE_LOG(LogTemp,Display,TEXT("NAVIGATION_TEST step=%d pass=%d"),MenuProofStep,OK);
