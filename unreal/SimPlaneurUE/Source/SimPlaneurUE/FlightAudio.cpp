@@ -1,5 +1,8 @@
 #include "SlopeFlightPawn.h"
 #include "ValleyAir.h"
+#include "ValleyLandscape.h"
+#include "WeatherScene.h"
+#include "EngineUtils.h"
 #include "Components/AudioComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -14,6 +17,9 @@ namespace
     constexpr auto MotorAsset = TEXT("/Game/FlightAudio/ElectricProp.ElectricProp");
     constexpr auto ServoAsset = TEXT("/Game/FlightAudio/ServoGear.ServoGear");
     constexpr auto VarioAsset = TEXT("/Game/FlightAudio/VarioTone.VarioTone");
+    constexpr auto RainAsset = TEXT("/Game/FlightAudio/RainShower.RainShower");
+    constexpr auto FoliageAsset = TEXT("/Game/FlightAudio/FoliageRustle.FoliageRustle");
+    constexpr auto ThunderAsset = TEXT("/Game/FlightAudio/ThunderRoll.ThunderRoll");
     constexpr auto VarioSection = TEXT("SimPlaneur.Vario");
 
     struct FVoice { float Gain = 0.f, Pitch = 1.f; };
@@ -119,6 +125,10 @@ void ASlopeFlightPawn::PrepareFlightAudio()
     MotorAudio = MakeSource(MotorAsset,true);
     ServoAudio = MakeSource(ServoAsset,true);
     VarioAudio = MakeSource(VarioAsset,false);
+    RainAudio = MakeSource(RainAsset,false);
+    FoliageAudio = MakeSource(FoliageAsset,false);
+    ThunderAudio = MakeSource(ThunderAsset,true);
+    if(ThunderAudio) ThunderAudio->SetAbsolute(true,false,false);
 }
 
 void ASlopeFlightPawn::UpdateFlightAudio(float DeltaSeconds)
@@ -153,6 +163,43 @@ void ASlopeFlightPawn::UpdateFlightAudio(float DeltaSeconds)
     const float WindSpeed = Following ? Flight.Airspeed() :
         ValleyAir::Velocity(EarNED,bMenuOpen ? TourTime : WeatherSeconds).Size();
     MixVoice(WindAudio,WindVoice(WindSpeed));
+    const auto Weather=ValleyAir::Settings();
+    const double WeatherTime=GetWeatherVisualSeconds();
+    const float Wet=float(ValleyAir::RainAt(EarNED,WeatherTime,Weather));
+    const float Height=float(FMath::Max(0.,-EarNED.Z-ValleyAir::SurfaceAltitude(EarNED.X,EarNED.Y)));
+    const float Cover=Valley::Woodland(Eye.X,Eye.Y);
+    const float Rustle=FMath::Clamp(WindSpeed/10.f,0.f,1.f)*FMath::Exp(-Height/22.f)*(.22f+.78f*Cover);
+    WeatherRainMix=FMath::FInterpTo(WeatherRainMix,Wet,Dt,2.f);
+    WeatherFoliageMix=FMath::FInterpTo(WeatherFoliageMix,Rustle,Dt,1.5f);
+    MixVoice(RainAudio,{WeatherRainMix*.48f,.9f+.16f*WeatherRainMix},.3f);
+    MixVoice(FoliageAudio,{WeatherFoliageMix*.24f,.82f+.22f*Rustle},.3f);
+    // A strike is seen immediately; sound arrives at the camera after d / 343.
+    // Bounded queue also handles a new strike while an earlier roll is travelling.
+    for(TActorIterator<AWeatherScene> Scene(GetWorld());Scene;++Scene)
+    {
+        const int32 Serial=Scene->GetLightningSerial();
+        if(Serial!=HeardLightningSerial)
+        {
+            HeardLightningSerial=Serial;
+            const FVector Strike=Scene->GetLightningPosition();
+            const double Metres=FVector::Dist(Strike,Eye)*.01;
+            if(Serial>0 && Weather.Sky==6 && Metres<7000. && PendingThunder.Num()<4)
+                PendingThunder.Add({GetWorld()->GetTimeSeconds()+Metres/343.,Strike,float(.65/(1.+Metres/1800.))});
+        }
+        break;
+    }
+    if(Weather.Sky!=6) PendingThunder.Reset();
+    for(int32 I=PendingThunder.Num()-1;I>=0;--I)
+    {
+        if(PendingThunder[I].Due>GetWorld()->GetTimeSeconds()) continue;
+        if(ThunderAudio)
+        {
+            ThunderAudio->SetWorldLocation(PendingThunder[I].Position);
+            ThunderAudio->SetVolumeMultiplier(PendingThunder[I].Gain);
+            ThunderAudio->Play();
+        }
+        PendingThunder.RemoveAt(I);
+    }
     const FVector ToEar = EarNED-Flight.PositionNED();
     const float Distance = ToEar.Size();
     const bool CanMoveServos = bModelReady && !bMenuOpen && !bNoclip && (bHeldForLaunch || Flying);
@@ -177,11 +224,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightAudioTest,"SimPlaneur.Audio.FlightMix",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FFlightAudioTest::RunTest(const FString&)
 {
-    for (const TCHAR* Path : {WindAsset,WingAsset,MotorAsset,ServoAsset,VarioAsset})
+    for (const TCHAR* Path : {WindAsset,WingAsset,MotorAsset,ServoAsset,VarioAsset,RainAsset,FoliageAsset})
     {
         const auto* Loop = LoadObject<USoundWave>(nullptr,Path);
         TestTrue(Path,Loop && Loop->bLooping && Loop->NumChannels==1 && Loop->Duration>=1.9f);
     }
+    const auto* Thunder=LoadObject<USoundWave>(nullptr,ThunderAsset);
+    TestTrue(TEXT("Thunder is a finite one-shot"),Thunder && !Thunder->bLooping && Thunder->Duration>=5.f);
     TestTrue(TEXT("Wind rises from calm to gust"),WindVoice(0).Gain==0 && WindVoice(4).Gain<WindVoice(10).Gain);
     float Phase = 0.f;
     const FVoice Climb = VarioVoice(.3f,.3f,-2.f,.5f,Phase);

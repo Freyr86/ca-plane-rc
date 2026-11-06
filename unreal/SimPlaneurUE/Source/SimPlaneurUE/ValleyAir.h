@@ -14,9 +14,21 @@ namespace ValleyAir
         double ThermalStrength = 1.;
         double Turbulence = .15;
         int32 SolarMinutes = 14*60;
-        int32 Sky = 1; // Clear, broken clouds, overcast, mist.
-
+        int32 Sky = 1; // Clear, broken clouds, overcast, mist, stratus, showers, storm.
+        double CloudBaseMeters = 650.; // Altitude above sea level, not camera or terrain.
+        double CloudCoverage = .55;
+        double RainStrength = .65;
+        bool LowClouds = true;
     };
+    struct FWeatherCell
+    {
+        FVector2D Centre;
+        double RadiusMeters;
+    };
+    // Same world-fixed precipitation field for particles, distant curtains and audio.
+    TArray<FWeatherCell> WeatherCells(double Seconds,const FWeatherSettings& Weather);
+    double RainAt(const FVector& PositionNED,double Seconds,const FWeatherSettings& Weather);
+    double CloudBaseAt(const FVector2D& XY,const FWeatherSettings& Weather);
     struct FAirSample
     {
         FVector VelocityNED = FVector::ZeroVector;

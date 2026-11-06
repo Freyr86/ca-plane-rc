@@ -954,9 +954,16 @@ void SFlightMenu::Weather(SVerticalBox& List)
     Add(List,Choice(TEXT("HEURE SOLAIRE"),[this]{return FString::Printf(TEXT("%02d h %02d"),DraftWeather.SolarMinutes/60,DraftWeather.SolarMinutes%60);},
         [this](int32 Step){DraftWeather.SolarMinutes=(DraftWeather.SolarMinutes+Step*30+1440)%1440;Message.Empty();}),10);
     Add(List,Choice(TEXT("ÉTAT DU CIEL"),[this]{
-        const TCHAR* Names[]={TEXT("Dégagé"),TEXT("Éclaircies"),TEXT("Couvert"),TEXT("Brumeux")};
+        const TCHAR* Names[]={TEXT("Dégagé"),TEXT("Éclaircies"),TEXT("Couvert"),TEXT("Brumeux"),TEXT("Stratus de pente"),TEXT("Averses locales"),TEXT("Orage")};
         return FString(Names[DraftWeather.Sky]);},
-        [this](int32 Step){DraftWeather.Sky=(DraftWeather.Sky+Step+4)%4;Message.Empty();}),10);
+        [this](int32 Step){
+            DraftWeather.Sky=(DraftWeather.Sky+Step+7)%7;
+            constexpr double Bases[]={900.,650.,500.,240.,300.,520.,420.};
+            constexpr double Cover[]={0.,.55,.92,.65,.90,.80,.96};
+            DraftWeather.CloudBaseMeters=Bases[DraftWeather.Sky];
+            DraftWeather.CloudCoverage=Cover[DraftWeather.Sky];
+            Message=TEXT("Ambiance préréglée ; les paramètres restent ajustables.");
+        }),10);
     Add(List,Choice(TEXT("FORCE DU VENT"),[this]{return FString::Printf(TEXT("%.1f m/s · %.0f km/h"),DraftWeather.WindSpeedMps,3.6*DraftWeather.WindSpeedMps);},
         [this](int32 S){DraftWeather.WindSpeedMps=FMath::Clamp(DraftWeather.WindSpeedMps+.5*S,0.,10.);Message.Empty();}),10);
     Add(List,Choice(TEXT("VENT VENANT DU"),[this]{return FString::Printf(TEXT("%03d°"),FMath::RoundToInt(DraftWeather.WindFromDegrees)%360);},
@@ -969,6 +976,20 @@ void SFlightMenu::Weather(SVerticalBox& List)
         [this](int32 S){DraftWeather.ThermalStrength=FMath::Clamp(DraftWeather.ThermalStrength+.25*S,0.,2.);Message.Empty();}),10);
     Add(List,Choice(TEXT("TURBULENCE"),[this]{return FString::Printf(TEXT("%d %%"),FMath::RoundToInt(DraftWeather.Turbulence*100));},
         [this](int32 S){DraftWeather.Turbulence=FMath::Clamp(DraftWeather.Turbulence+.1*S,0.,1.);Message.Empty();}),12);
+    Add(List,Text(TEXT("NUAGES ET PRÉCIPITATIONS"),11,MutedInk,TEXT("Bold")),8);
+    Add(List,Choice(TEXT("BASE DES NUAGES"),[this]{return FString::Printf(TEXT("%.0f m d’altitude"),DraftWeather.CloudBaseMeters);},
+        [this](int32 S){DraftWeather.CloudBaseMeters=FMath::Clamp(DraftWeather.CloudBaseMeters+S*50.,80.,2500.);Message.Empty();}),8);
+    Add(List,Choice(TEXT("COUVERTURE NUAGEUSE"),[this]{return FString::Printf(TEXT("%.0f %%"),DraftWeather.CloudCoverage*100.);},
+        [this](int32 S){DraftWeather.CloudCoverage=FMath::Clamp(DraftWeather.CloudCoverage+S*.05,0.,1.);Message.Empty();}),8);
+    Add(List,SNew(SCheckBox).Style(&CheckStyle()).Tag(TEXT("LowClouds"))
+        .IsChecked_Lambda([this]{return DraftWeather.LowClouds?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+        .OnCheckStateChanged_Lambda([this](ECheckBoxState State){DraftWeather.LowClouds=State==ECheckBoxState::Checked;Message.Empty();})
+        [Text(TEXT("Nappes basses sur les reliefs"),12,Ink)],10);
+    Add(List,Choice(TEXT("INTENSITÉ DES AVERSES"),[this]{return FString::Printf(TEXT("%.0f %%"),DraftWeather.RainStrength*100.);},
+        [this](int32 S){DraftWeather.RainStrength=FMath::Clamp(DraftWeather.RainStrength+S*.1,0.,1.);Message.Empty();}),8);
+    auto RainHint=Text(TEXT("Pluie en modes Averses locales et Orage : les zones humides se déplacent avec le vent. La base des nuages est une altitude, pas une hauteur au-dessus du pilote."),11,MutedInk);
+    RainHint->SetAutoWrapText(true);
+    Add(List,RainHint,10);
     Add(List,Text(TEXT("La pente porte du côté exposé au vent.\nLes thermiques dépendent du sol et de l’altitude."),11,MutedInk),10);
     Add(List,Live([this]{return Message;},11,Rust),6);
     Add(List,Button(TEXT("DefaultWeather"),TEXT("Rétablir la météo de référence"),[this]{

@@ -36,6 +36,7 @@ public:
     float GetAltitudeM() const { return AltitudeM; }
     float GetPhysicsHz() const { return PhysicsHz; }
     double GetWeatherSeconds() const { return WeatherSeconds; }
+    double GetWeatherVisualSeconds() const { return EnvironmentSeconds; }
     FVector GetLocalWind() const { return Flight.LocalWind(); }
     double GetRidgeLift() const { return RidgeLift; }
     FVector GetRelativeFlow() const { return Flight.RelativeFlowNED(); }
@@ -158,6 +159,10 @@ private:
     bool bPilotProof = false;
     void TestPilotMovement(float Elapsed);
     bool bCirqueProof = false;
+    bool bWeatherProof = false;
+    int32 WeatherProofLightning=0;
+    int32 WeatherProofCapturedLightning=0;
+    void TestWeather(float Elapsed);
     void TestCirque(float Elapsed);
     void TestBungee(float Elapsed);
     void TestWinch(float Elapsed);
@@ -205,6 +210,16 @@ private:
     TObjectPtr<UAudioComponent> ServoAudio;
     UPROPERTY()
     TObjectPtr<UAudioComponent> VarioAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> RainAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> FoliageAudio;
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> ThunderAudio;
+    int32 HeardLightningSerial=0;
+    struct FPendingThunder { double Due; FVector Position; float Gain; };
+    TArray<FPendingThunder> PendingThunder;
+    float WeatherRainMix=0.f,WeatherFoliageMix=0.f;
     bool bVarioEnabled = false;
     float ClimbThreshold = .3f, SinkThreshold = -2.f;
     float VarioPhase = 0.f, FilteredClimb = 0.f;
@@ -219,6 +234,7 @@ private:
     bool AileronSteering[UE_ARRAY_COUNT(HangarModels)] = {};
     int32 SelectedModel = 0, PreviewModel = 0;
     double WeatherSeconds = 0.;
+    double EnvironmentSeconds = 0.;
     double RidgeLift = 0.;
     FWindTrails WindTrails;
     UPROPERTY()

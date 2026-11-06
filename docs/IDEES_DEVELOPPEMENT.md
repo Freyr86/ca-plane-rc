@@ -1,9 +1,10 @@
 # Idées de développement restantes
 
-Carnet de Ça plane ! · Mise à jour du 4 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
+Carnet de Ça plane ! · Mise à jour du 5 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
 
 ## Vol et multijoueur
 
+- **Enregistrement des vols et défis personnels.** Enregistrer automatiquement chaque vol depuis le lancement, puis le sauvegarder à l’atterrissage ou au crash. Conserver la trajectoire, la durée, la distance parcourue, le gain d’altitude et les vitesses, avec le modèle, le site et les conditions météo. Afficher un bilan distinguant atterrissage et crash, tenir un historique et des records personnels pour permettre au joueur de se challenger. Prévoir une relecture de la trajectoire et la possibilité de retenter un défi dans les mêmes conditions.
 - **Repère visuel en bout d’aile.** Proposer deux traînées discrètes et activables qui dessinent la trajectoire récente des saumons par rapport au sol. Les laisser s’effacer après une durée fixe. Depuis la caméra au sol, à vitesse air égale, la trace sera plus courte face au vent et plus longue vent arrière. Par vent de travers, elle rendra la dérive visible.
 - **Entraînement F3F.** Installer deux bases distantes de 100 m, chronométrer dix longueurs, signaler les passages valides par un bip et permettre de retenter la manche avec le même vent. Évaluer le VJX 2022 sur ce parcours avant de décider s’il faut un autre planeur.
 - **Remorquage en solo.** Confier l’avion remorqueur à l’IA et laisser au pilote du planeur la commande de largage.
@@ -25,7 +26,6 @@ Carnet de Ça plane ! · Mise à jour du 4 novembre 2026. Les idées sont regrou
 
 ## Audio
 
-- **Végétation.** Faire entendre l’herbe en prairie et le feuillage sous les arbres, avec une transition douce quand le pilote passe en lisière.
 - **Réglages de volume.** Proposer un volume général et des réglages indépendants pour la musique, l’ambiance, le planeur et la télémétrie.
 - **Alerte de batterie.** La relier à une future simulation de consommation électrique, avec un seuil et des rappels espacés. [Plan audio](PLAN_AUDIO.md)
 

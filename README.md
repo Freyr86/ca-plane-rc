@@ -38,6 +38,7 @@ Le projet reste un prototype : les réglages physiques sont affinés par compara
 - Radio USB (notamment TX16S), affectations personnalisées et pilotage clavier.
 - Masse, centrage avec silhouette interactive, force des commandes de −500 à +500 % par modèle.
 - Vent relatif, thermiques, ascendances de relief, boussole et filets d’air.
+- Météo réglable : nuages volumétriques, stratus de pente, averses locales, éclairs et tonnerre ; herbe et arbres animés par le vent.
 - Vallée alpine procédurale, prairie en 3D, arbres, lac, nuages et collisions.
 - Menu animé, réglages graphiques, noclip et choix du poste de pilotage.
 
@@ -77,6 +78,20 @@ Les instruments de vol (boussole, vent, vario, cadran de traction et état des d
 Le bandeau des touches et les astuces s’effacent progressivement : opacité de 20 % en vol, 40 % au sol ou en exploration, et 90 % pendant une interaction. Après une touche de fonction, un lancement ou une interaction avec le matériel, ils restent lisibles pendant 2,5 secondes avant de s’atténuer. Marcher, regarder et piloter ne réactivent pas le bandeau.
 
 La boussole reprend le cadran crème et les panneaux latéraux de la proposition « Instrument de vol », avec les polices du menu, des valeurs agrandies et un vario séparé. Les points cardinaux et les deux aiguilles de vent restent orientés selon la caméra. Le panneau d’instruments de diagnostic est masqué et conservé dans le code ; F1 sélectionne désormais le treuil.
+
+## Météo et ambiance
+
+Depuis **Échap → Météo**, choisir une ambiance : Dégagé, Éclaircies, Couvert, Brumeux, Stratus de pente, Averses locales ou Orage. L’heure déplace le soleil et module l’activité thermique. La force et la direction du vent, les thermiques et les turbulences restent réglables indépendamment. **Appliquer la météo** met à jour le monde et enregistre les réglages pour la prochaine session.
+
+La **base des nuages** se règle de 80 à 2 500 m d’altitude : c’est une altitude par rapport au niveau de référence du monde, pas une hauteur au-dessus du pilote. La couverture nuageuse et l’intensité de pluie se règlent de 0 à 100 %. L’option de nuages bas ajoute des nappes au contact des reliefs, particulièrement visibles avec les ambiances Brumeux et Stratus de pente. La couverture à zéro retire les nuages, la pluie et les éclairs.
+
+Les averses et les orages occupent des zones du monde qui dérivent lentement avec le vent : on peut quitter une averse et retrouver une zone sèche. Les rideaux de pluie se voient à distance ; les gouttes proches et le son de pluie suivent la position de la caméra, avec une transition progressive. En orage, les éclairs précèdent le tonnerre, dont le retard et l’atténuation dépendent de la distance. Le froissement de la végétation varie avec le vent, la proximité du sol et la densité des arbres. L’herbe et le feuillage bougent avec le vent ; leurs collisions restent stables.
+
+Cette météo reste une simulation simplifiée pour le vol RC : les zones de pluie sont déterministes, le brouillard de pente est visuel et il n’y a pas de véritable calcul CFD de l’atmosphère. La pluie ne simule pas encore le mouillage des ailes ni son effet sur leurs performances. Les distances de rendu de l’herbe et des filets d’air ne limitent pas le champ de vent utilisé par le planeur.
+
+![Éclaircies sur la vallée](docs/design/meteo/eclaircies.png)
+
+[Stratus au cirque](docs/design/meteo/stratus-cirque.png) · [Averse locale](docs/design/meteo/averse-vallee.png) · [Éclair d’orage](docs/design/meteo/orage-eclair.png) · [Herbe au vent](docs/design/meteo/herbe-au-vent.png)
 
 ## Cirque des falaises
 
@@ -141,9 +156,12 @@ Le guide détaillé est dans [unreal/SimPlaneurUE/README.md](unreal/SimPlaneurUE
 .\Lancer-Unreal.cmd --test-physics
 .\Lancer-Unreal.cmd --smoke --offscreen --menu-proof
 .\Lancer-Unreal.cmd --smoke --offscreen --bungee-proof
+.\Lancer-Unreal.cmd --smoke --offscreen --weather-proof
 ```
 
 Les tests couvrent la dynamique, le vent, les gains de commande, le lancer, les menus, le changement de site et la marche avant lancement. Les journaux et captures restent dans les dossiers locaux ignorés par Git.
+
+La preuve météo parcourt les éclaircies, les stratus, une averse et une zone sèche, l’orage, le vent dans l’herbe et le menu. Elle vérifie également le mélange sonore local et produit dix captures. Les ressources météo se régénèrent avec les scripts Unreal Python `build_weather_materials.py`, `build_weather_audio.py` et `build_vegetation_wind.py`, dans `unreal/SimPlaneurUE/Scripts/`. Les sons sont synthétisés par le projet. Les nuages utilisent une instance dynamique du [matériau volumétrique fourni par Unreal](https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-cloud-material-in-unreal-engine).
 
 ## Organisation
 

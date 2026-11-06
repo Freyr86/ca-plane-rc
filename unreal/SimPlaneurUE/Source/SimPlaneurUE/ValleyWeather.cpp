@@ -76,10 +76,61 @@ FVector ValleyAir::SunDirection(int32 SolarMinutes)
 
 double ValleyAir::SolarHeating(const FWeatherSettings& Weather)
 {
-    constexpr double Transmission[]={1.12,1.,.24,.45};
+    constexpr double Transmission[]={1.12,1.,.24,.45,.28,.35,.16};
     static const double Reference=SunDirection(14*60).Z;
+    const double Cover=FMath::IsFinite(Weather.CloudCoverage)?FMath::Clamp(Weather.CloudCoverage/.55,0.,1.):1.;
     return FMath::Max(0.,SunDirection(Weather.SolarMinutes).Z)/Reference
-        *Transmission[FMath::Clamp(Weather.Sky,0,3)];
+        *FMath::Lerp(Transmission[0],Transmission[FMath::Clamp(Weather.Sky,0,6)],Cover);
+}
+
+TArray<ValleyAir::FWeatherCell> ValleyAir::WeatherCells(double Seconds,const FWeatherSettings& Weather)
+{
+    // Stable cells shared by every observer. Wrapping is outside the playable
+    // world by more than a cell radius, so no shower jumps across a pilot.
+    static const FWeatherCell Sources[]={
+        {{150.,80.},700.},{{3000.,2200.},850.},{{-1350.,-550.},620.},
+        {{-2700.,2600.},780.},{{2600.,-2900.},900.},{{-4300.,-3500.},700.},
+        {{4400.,4300.},760.},{{-4400.,4400.},850.},{{4500.,-4800.},780.}};
+    const double Time=FMath::IsFinite(Seconds)?Seconds:0.;
+    const double Wind=FMath::IsFinite(Weather.WindSpeedMps)?FMath::Clamp(Weather.WindSpeedMps,0.,10.):4.5;
+    const double Bearing=FMath::DegreesToRadians(FMath::IsFinite(Weather.WindFromDegrees)?Weather.WindFromDegrees:12.);
+    const FVector2D Drift=FVector2D(-FMath::Cos(Bearing),-FMath::Sin(Bearing))*(Wind*.18*Time);
+    auto Wrap=[](double V) { double P=FMath::Fmod(V+7500.,15000.); if(P<0.) P+=15000.; return P-7500.; };
+    TArray<FWeatherCell> Result;
+    Result.Reserve(UE_ARRAY_COUNT(Sources));
+    for(const auto& Source:Sources)
+        Result.Add({{Wrap(Source.Centre.X+Drift.X),Wrap(Source.Centre.Y+Drift.Y)},Source.RadiusMeters});
+    return Result;
+}
+
+double ValleyAir::CloudBaseAt(const FVector2D& XY,const FWeatherSettings& Weather)
+{
+    const double Base=FMath::IsFinite(Weather.CloudBaseMeters)?FMath::Clamp(Weather.CloudBaseMeters,80.,2500.):650.;
+    if(!Weather.LowClouds || (Weather.Sky!=3 && Weather.Sky!=4) || XY.ContainsNaN()) return Base;
+    // A low layer keeps its common altitude; only its lower fringe descends
+    // over nearby ridges. Terrain above the layer naturally enters cloud.
+    const double Ground=SurfaceAltitude(XY.X,XY.Y);
+    return Base-45.*FMath::SmoothStep(Base-180.,Base-20.,Ground);
+}
+
+double ValleyAir::RainAt(const FVector& Position,double Seconds,const FWeatherSettings& Weather)
+{
+    if((Weather.Sky!=5 && Weather.Sky!=6) || Weather.CloudCoverage<=.01 || Position.ContainsNaN()) return 0.;
+    const double Strength=FMath::IsFinite(Weather.RainStrength)?FMath::Clamp(Weather.RainStrength,0.,1.):.65;
+    if(Strength<=0.) return 0.;
+    const FVector2D XY(Position.X,Position.Y);
+    const double Altitude=-Position.Z, Ground=SurfaceAltitude(XY.X,XY.Y);
+    if(Altitude<Ground-1.) return 0.;
+    const double Ceiling=CloudBaseAt(XY,Weather);
+    const double Vertical=1.-FMath::SmoothStep(Ceiling,Ceiling+100.,Altitude);
+    if(Vertical<=0.) return 0.;
+    double Dry=1.;
+    for(const auto& Shower:WeatherCells(Seconds,Weather))
+    {
+        const double Distance=FVector2D::Distance(XY,Shower.Centre);
+        Dry*=FMath::SmoothStep(Shower.RadiusMeters*.25,Shower.RadiusMeters,Distance);
+    }
+    return Strength*(1.-Dry)*Vertical;
 }
 
 ValleyAir::FWeatherSettings ValleyAir::Settings() { return CurrentWeather; }
@@ -87,12 +138,16 @@ ValleyAir::FWeatherSettings ValleyAir::Settings() { return CurrentWeather; }
 void ValleyAir::SetSettings(const FWeatherSettings& Weather)
 {
     CurrentWeather.SolarMinutes=FMath::Clamp(Weather.SolarMinutes,0,1439);
-    CurrentWeather.Sky=FMath::Clamp(Weather.Sky,0,3);
+    CurrentWeather.Sky=FMath::Clamp(Weather.Sky,0,6);
     const FWeatherSettings Default;
     CurrentWeather.WindSpeedMps=FMath::IsFinite(Weather.WindSpeedMps) ? FMath::Clamp(Weather.WindSpeedMps,0.,10.) : Default.WindSpeedMps;
     CurrentWeather.WindFromDegrees=FMath::IsFinite(Weather.WindFromDegrees) ? FRotator::ClampAxis(Weather.WindFromDegrees) : Default.WindFromDegrees;
     CurrentWeather.ThermalStrength=FMath::IsFinite(Weather.ThermalStrength) ? FMath::Clamp(Weather.ThermalStrength,0.,2.) : Default.ThermalStrength;
     CurrentWeather.Turbulence=FMath::IsFinite(Weather.Turbulence) ? FMath::Clamp(Weather.Turbulence,0.,1.) : Default.Turbulence;
+    CurrentWeather.CloudBaseMeters=FMath::IsFinite(Weather.CloudBaseMeters)?FMath::Clamp(Weather.CloudBaseMeters,80.,2500.):Default.CloudBaseMeters;
+    CurrentWeather.CloudCoverage=FMath::IsFinite(Weather.CloudCoverage)?FMath::Clamp(Weather.CloudCoverage,0.,1.):Default.CloudCoverage;
+    CurrentWeather.RainStrength=FMath::IsFinite(Weather.RainStrength)?FMath::Clamp(Weather.RainStrength,0.,1.):Default.RainStrength;
+    CurrentWeather.LowClouds=Weather.LowClouds;
 }
 
 void ValleyAir::LoadSettings()
@@ -104,6 +159,10 @@ void ValleyAir::LoadSettings()
     GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("WindFromDegrees"),Weather.WindFromDegrees,GGameUserSettingsIni);
     GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("ThermalStrength"),Weather.ThermalStrength,GGameUserSettingsIni);
     GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("Turbulence"),Weather.Turbulence,GGameUserSettingsIni);
+    GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("CloudBaseMeters"),Weather.CloudBaseMeters,GGameUserSettingsIni);
+    GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("CloudCoverage"),Weather.CloudCoverage,GGameUserSettingsIni);
+    GConfig->GetDouble(TEXT("SimPlaneur.Weather"),TEXT("RainStrength"),Weather.RainStrength,GGameUserSettingsIni);
+    GConfig->GetBool(TEXT("SimPlaneur.Weather"),TEXT("LowClouds"),Weather.LowClouds,GGameUserSettingsIni);
     SetSettings(Weather);
 }
 
@@ -115,6 +174,10 @@ void ValleyAir::SaveSettings()
     GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("WindFromDegrees"),CurrentWeather.WindFromDegrees,GGameUserSettingsIni);
     GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("ThermalStrength"),CurrentWeather.ThermalStrength,GGameUserSettingsIni);
     GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("Turbulence"),CurrentWeather.Turbulence,GGameUserSettingsIni);
+    GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("CloudBaseMeters"),CurrentWeather.CloudBaseMeters,GGameUserSettingsIni);
+    GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("CloudCoverage"),CurrentWeather.CloudCoverage,GGameUserSettingsIni);
+    GConfig->SetDouble(TEXT("SimPlaneur.Weather"),TEXT("RainStrength"),CurrentWeather.RainStrength,GGameUserSettingsIni);
+    GConfig->SetBool(TEXT("SimPlaneur.Weather"),TEXT("LowClouds"),CurrentWeather.LowClouds,GGameUserSettingsIni);
     GConfig->Flush(false,GGameUserSettingsIni);
 }
 

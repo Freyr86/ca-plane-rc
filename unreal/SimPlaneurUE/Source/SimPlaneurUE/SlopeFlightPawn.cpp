@@ -297,6 +297,7 @@ void ASlopeFlightPawn::BeginPlay()
     bLandingProof = FParse::Param(FCommandLine::Get(), TEXT("LandingProof"));
     bPilotProof = FParse::Param(FCommandLine::Get(), TEXT("PilotProof"));
     bCirqueProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("CirqueProof"));
+    bWeatherProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("WeatherProof"));
     bContactProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("ContactProof"));
     bCaptureSite = FParse::Param(FCommandLine::Get(), TEXT("CaptureSite"));
     bMeadowProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("MeadowProof"));
@@ -1028,6 +1029,7 @@ void ASlopeFlightPawn::StopFlightAt(const FTransform& Contact)
 void ASlopeFlightPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    EnvironmentSeconds+=DeltaSeconds;
     if (!bAppearanceReady)
     {
         bAppearanceReady = !AircraftTextures.ContainsByPredicate([](UTexture2D* Texture)
@@ -1052,7 +1054,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (!Menu.IsValid()) OpenMenu();
         else Menu->UpdateStartupPoster();
     }
-    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof) ReadControls(DeltaSeconds);
+    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof) ReadControls(DeltaSeconds);
     UpdateEquipment(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
     UpdateFlightAudio(DeltaSeconds);
@@ -1081,6 +1083,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (bLandingProof) { TestLanding(SmokeElapsed); return; }
         if (bPilotProof) { TestPilotMovement(SmokeElapsed); return; }
         if (bCirqueProof) { TestCirque(SmokeElapsed); return; }
+        if (bWeatherProof) { TestWeather(SmokeElapsed); return; }
         if (bMenuProof) { TestMenu(SmokeElapsed); return; }
         if (bContactProof && Flight.IsStopped() && ContactKind==TEXT("tree") && ProofFlight==0)
         {

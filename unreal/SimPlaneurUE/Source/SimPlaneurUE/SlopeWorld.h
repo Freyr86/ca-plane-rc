@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "VegetationWind.h"
 #include "SlopeWorld.generated.h"
 
 class UProceduralMeshComponent;
@@ -41,6 +42,7 @@ public:
     static float TerrainVertexHeightCm(float X,float Y);
 
 private:
+    FVegetationWind Vegetation;
     UPROPERTY()
     UProceduralMeshComponent* Terrain;
     UPROPERTY()
@@ -79,6 +81,7 @@ private:
     void PlantFieldTile(FIntPoint Tile,int32 Slot,bool Detail);
 
     int32 LastSolarMinutes=-1, LastSky=-1;
+    double LastCloudBase=-1,LastCloudCoverage=-1,LastWeatherWind=-1,LastWeatherBearing=-1;
     UPROPERTY(Transient)
     UMaterialInstanceDynamic* WeatherClouds=nullptr;
     void BuildLaunchSite();

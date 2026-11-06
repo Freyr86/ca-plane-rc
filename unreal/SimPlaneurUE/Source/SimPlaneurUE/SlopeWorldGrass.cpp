@@ -4,6 +4,9 @@
 #include "CirqueLandscape.h"
 #include "CirqueSite.h"
 #include "CirqueWall.h"
+#include "WeatherScene.h"
+#include "VegetationWind.h"
+#include "Engine/World.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -66,6 +69,8 @@ void ASlopeWorld::BeginPlay()
     bool Visible=true;
     GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowGrass"),Visible,GGameUserSettingsIni);
     SetGrassDistanceMeters(SavedGrassDistanceMeters(),Visible);
+    Vegetation.Prepare(this,GrassMaterial);
+    GetWorld()->SpawnActor<AWeatherScene>();
 }
 
 void ASlopeWorld::SetGrassDistanceMeters(int32 Meters,bool Visible)

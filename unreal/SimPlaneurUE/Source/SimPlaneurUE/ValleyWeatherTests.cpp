@@ -4,6 +4,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "Misc/ConfigCacheIni.h"
+#include "HAL/FileManager.h"
+#include <limits>
 
 namespace
 {
@@ -11,6 +14,117 @@ namespace
     {
         return FVector(North,East,-ValleyAir::SurfaceAltitude(North,East)-Height);
     }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWeatherRegionsTest,"SimPlaneur.Weather.LocalShowers",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FWeatherRegionsTest::RunTest(const FString&)
+{
+    ValleyAir::FWeatherSettings Weather;
+    Weather.Sky=5;
+    Weather.CloudBaseMeters=900.;
+    const auto Cells=ValleyAir::WeatherCells(0.,Weather);
+    TestTrue(TEXT("World includes several separated shower cells"),Cells.Num()>2);
+    if(Cells.IsEmpty()) return false;
+    const FVector2D Centre=Cells[0].Centre;
+    const FVector Wet=Above(Centre.X,Centre.Y,2.);
+    const double Rain=ValleyAir::RainAt(Wet,0.,Weather);
+    TestTrue(TEXT("Initial site lies within a useful rain core"),Rain>.5);
+    TestEqual(TEXT("A sheltered altitude above cloud has no rain"),
+        ValleyAir::RainAt(FVector(Centre,-1100.),0.,Weather),0.);
+    TestEqual(TEXT("Rain is absent under the terrain"),
+        ValleyAir::RainAt(Above(Centre.X,Centre.Y,-10.),0.,Weather),0.);
+    int32 WetCount=0,DryCount=0;
+    for(int32 North=-4000;North<=4000;North+=400)
+        for(int32 East=-4000;East<=4000;East+=400)
+        {
+            const double Value=ValleyAir::RainAt(Above(North,East,2.),0.,Weather);
+            TestTrue(TEXT("All rain samples are bounded"),FMath::IsFinite(Value) && Value>=0. && Value<=1.);
+            WetCount+=Value>.1;
+            DryCount+=Value<.001;
+        }
+    TestTrue(TEXT("Wet and dry areas coexist in one world"),WetCount>10 && DryCount>100);
+    for(double Radius:{Cells[0].RadiusMeters*.25,Cells[0].RadiusMeters*.6,Cells[0].RadiusMeters})
+    {
+        const FVector Edge=Above(Centre.X+Radius,Centre.Y,2.);
+        const double Before=ValleyAir::RainAt(Edge-FVector(.02,0,0),30.,Weather);
+        const double After=ValleyAir::RainAt(Edge+FVector(.02,0,0),30.,Weather);
+        TestTrue(TEXT("Entering and leaving an averses zone has no abrupt edge"),FMath::Abs(After-Before)<.001);
+        TestTrue(TEXT("Rain transitions smoothly in time"),
+            FMath::Abs(ValleyAir::RainAt(Edge,30.02,Weather)-ValleyAir::RainAt(Edge,30.,Weather))<.001);
+    }
+    ValleyAir::RainAt(Above(3000,2200,2),900.,Weather);
+    TestEqual(TEXT("Observer order does not alter precipitation"),ValleyAir::RainAt(Wet,0.,Weather),Rain);
+    const auto Later=ValleyAir::WeatherCells(10.,Weather);
+    const FVector2D Drift=Later[0].Centre-Centre;
+    const double Bearing=FMath::DegreesToRadians(Weather.WindFromDegrees);
+    TestTrue(TEXT("Cells move downwind"),FVector2D::DotProduct(Drift,FVector2D(-FMath::Cos(Bearing),-FMath::Sin(Bearing)))>0.);
+    Weather.WindSpeedMps=0.;
+    TestTrue(TEXT("Calm leaves weather cells stationary"),ValleyAir::WeatherCells(10000.,Weather)[0].Centre.Equals(Centre,1.e-8));
+    Weather.RainStrength=0.;
+    TestEqual(TEXT("Rain slider zero stops all showers"),ValleyAir::RainAt(Wet,0.,Weather),0.);
+    Weather.RainStrength=.65;
+    Weather.CloudCoverage=0.;
+    TestEqual(TEXT("Removing cloud cover also removes rain"),ValleyAir::RainAt(Wet,0.,Weather),0.);
+    const double ClearHeating=ValleyAir::SolarHeating(Weather);
+    Weather.CloudCoverage=.55;
+    TestTrue(TEXT("Removing cover restores solar heating"),ClearHeating>ValleyAir::SolarHeating(Weather));
+    for(int32 Sky=0;Sky<5;++Sky)
+    {
+        Weather.Sky=Sky;
+        TestEqual(TEXT("Dry weather presets never produce rain"),ValleyAir::RainAt(Wet,0.,Weather),0.);
+    }
+    Weather.Sky=4; Weather.CloudBaseMeters=300.;
+    const double LowBase=ValleyAir::CloudBaseAt({3000.,2200.},Weather);
+    TestTrue(TEXT("Stratus fringe remains close to the configured cloud altitude"),LowBase>=255. && LowBase<=300.);
+    Weather.LowClouds=false;
+    TestEqual(TEXT("Disabling low fringe preserves the base altitude"),ValleyAir::CloudBaseAt({3000.,2200.},Weather),300.);
+    UE_LOG(LogTemp,Display,TEXT("WEATHER_REGIONS wet=%d dry=%d cells=%d core=%.2f"),WetCount,DryCount,Cells.Num(),Rain);
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWeatherSettingsTest,"SimPlaneur.Weather.SettingsRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FWeatherSettingsTest::RunTest(const FString&)
+{
+    const auto Previous=ValleyAir::Settings();
+    const FString PreviousIni=GGameUserSettingsIni;
+    const FString Folder=FPaths::ProjectSavedDir()/TEXT("Automation");
+    IFileManager::Get().MakeDirectory(*Folder,true);
+    const FString TestIni=FPaths::CreateTempFilename(*Folder,TEXT("Weather"),TEXT(".ini"));
+    // CreateTempFilename only reserves a name. Register this isolated config
+    // branch before writing: UE ignores Set* for an unknown, nonexistent INI.
+    GConfig->Add(TestIni,FConfigFile());
+    GGameUserSettingsIni=TestIni;
+    ValleyAir::FWeatherSettings Set;
+    Set.Sky=6; Set.CloudBaseMeters=375.; Set.CloudCoverage=.81; Set.RainStrength=.73; Set.LowClouds=false;
+    ValleyAir::SetSettings(Set);
+    ValleyAir::SaveSettings();
+    TestTrue(TEXT("Weather settings are written to disk"),IFileManager::Get().FileExists(*TestIni));
+    GConfig->UnloadFile(TestIni);
+    ValleyAir::SetSettings({});
+    ValleyAir::LoadSettings();
+    const auto Reloaded=ValleyAir::Settings();
+    TestEqual(TEXT("Storm preset survives restart"),Reloaded.Sky,6);
+    TestEqual(TEXT("Cloud altitude survives restart"),Reloaded.CloudBaseMeters,375.);
+    TestTrue(TEXT("Rain, coverage and low layer option survive restart"),
+        FMath::IsNearlyEqual(Reloaded.CloudCoverage,.81,1.e-8) && FMath::IsNearlyEqual(Reloaded.RainStrength,.73,1.e-8) && !Reloaded.LowClouds);
+    Set.Sky=123; Set.CloudBaseMeters=-100.; Set.CloudCoverage=3.; Set.RainStrength=-2.;
+    ValleyAir::SetSettings(Set);
+    const auto Limited=ValleyAir::Settings();
+    TestTrue(TEXT("Invalid persisted ranges are clamped"),Limited.Sky==6 && Limited.CloudBaseMeters==80. && Limited.CloudCoverage==1. && Limited.RainStrength==0.);
+    Set.CloudBaseMeters=Set.CloudCoverage=Set.RainStrength=std::numeric_limits<double>::quiet_NaN();
+    ValleyAir::SetSettings(Set);
+    const auto Finite=ValleyAir::Settings();
+    TestTrue(TEXT("Non-finite weather settings revert to usable defaults"),
+        Finite.CloudBaseMeters==650. && Finite.CloudCoverage==.55 && Finite.RainStrength==.65);
+    GGameUserSettingsIni=PreviousIni;
+    ValleyAir::SetSettings(Previous);
+    GConfig->UnloadFile(TestIni);
+    IFileManager::Get().Delete(*TestIni);
+    return !HasAnyErrors();
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWeatherFieldTest,"SimPlaneur.Physics.WeatherField",

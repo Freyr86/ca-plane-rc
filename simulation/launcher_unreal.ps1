@@ -101,6 +101,11 @@ if ($args -contains '--smoke') {
         $cirqueLog = Join-Path $work 'cirque-proof.log'
         $gameArgs += "-abslog=$cirqueLog", '-CirqueProof', "-GameUserSettingsINI=$(Join-Path $work 'cirque-proof-settings.ini')"
     }
+    if ($args -contains '--weather-proof') {
+        $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
+        $weatherLog = Join-Path $work 'weather-proof.log'
+        $gameArgs += "-abslog=$weatherLog", '-WeatherProof', "-GameUserSettingsINI=$(Join-Path $work 'weather-proof-settings.ini')"
+    }
     if ($args -contains '--landing-proof') {
         $work = [IO.Directory]::CreateDirectory((Join-Path $root 'work')).FullName
         $landingLog = Join-Path $work 'landing-proof.log'
@@ -141,5 +146,10 @@ if ($args -contains '--cirque-proof') {
     $events = Select-String -LiteralPath $cirqueLog -Pattern 'CIRQUE_PROOF'
     $events | ForEach-Object { Write-Output $_.Line }
     if (!($events -match 'CIRQUE_PROOF complete') -or ($events -match 'success=0')) { exit 1 }
+}
+if ($args -contains '--weather-proof') {
+    $events = Select-String -LiteralPath $weatherLog -Pattern 'WEATHER_PROOF'
+    $events | ForEach-Object { Write-Output $_.Line }
+    if (!($events -match 'WEATHER_PROOF complete') -or ($events -match 'pass=0')) { exit 1 }
 }
 exit $LASTEXITCODE

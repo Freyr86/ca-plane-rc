@@ -263,6 +263,7 @@ return weight * (wind + touch*float3(16*side, -min(24.0,L.z*.65)));
 bind(offset,"",mp.MP_WORLD_POSITION_OFFSET)
 import runpy
 runpy.run_path(str(Path(__file__).with_name("grass_distance_fade.py")), run_name="grass_fade")["apply_grass_fade"](mat)
+runpy.run_path(str(Path(__file__).with_name("build_vegetation_wind.py")), run_name="vegetation_wind")["apply_grass_wind"](mat)
 finish()
 for name in ("BentGrass","FloweringFescue","CreepingBent"):
     path = f"{folder}/{name}/StaticMeshes/{name}"
