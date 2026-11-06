@@ -14,6 +14,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File packaging/build-instal
 
 Résultats dans `work/release` : un programme d’installation et `SHA256SUMS.txt`. Les fichiers générés, les caches et les outils locaux ne sont pas versionnés.
 
+Le dossier de jeu `SimPlaneurUE/Saved` est exclu de l’installeur : les captures, journaux et configurations issus des tests locaux ne sont pas distribués.
+
 L’installation se fait par utilisateur, dans `%LOCALAPPDATA%\Programs\CaPlaneRC` par défaut, avec menu Démarrer, raccourci Bureau optionnel et désinstallation. Les prérequis Unreal sont embarqués ; le lanceur Unreal les vérifie au démarrage. L’installateur n’est pas signé par un certificat de signature de code.
 
 ## Vérification avant publication
