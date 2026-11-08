@@ -1,12 +1,12 @@
-# Idées de développement restantes
+﻿# Idées de développement restantes
 
-Carnet de Ça plane ! · Mise à jour du 5 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
+Carnet de Ça plane ! · Mise à jour du 8 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
 
 ## Vol et multijoueur
 
 - **Enregistrement des vols et défis personnels.** Enregistrer automatiquement chaque vol depuis le lancement, puis le sauvegarder à l’atterrissage ou au crash. Conserver la trajectoire, la durée, la distance parcourue, le gain d’altitude et les vitesses, avec le modèle, le site et les conditions météo. Afficher un bilan distinguant atterrissage et crash, tenir un historique et des records personnels pour permettre au joueur de se challenger. Prévoir une relecture de la trajectoire et la possibilité de retenter un défi dans les mêmes conditions.
 - **Repère visuel en bout d’aile.** Proposer deux traînées discrètes et activables qui dessinent la trajectoire récente des saumons par rapport au sol. Les laisser s’effacer après une durée fixe. Depuis la caméra au sol, à vitesse air égale, la trace sera plus courte face au vent et plus longue vent arrière. Par vent de travers, elle rendra la dérive visible.
-- **Entraînement F3F.** Installer deux bases distantes de 100 m, chronométrer dix longueurs, signaler les passages valides par un bip et permettre de retenter la manche avec le même vent. Évaluer le VJX 2022 sur ce parcours avant de décider s’il faut un autre planeur.
+- **Suite du F3F.** Le parcours manuel, les portes optionnelles et le chronométrage sont implémentés (voir `F3F.md`). À poursuivre : historique et records par modèle/parcours, rejeu de la même météo, classement de plusieurs pilotes et manches, contrôle complet des appareils et aires d’atterrissage. Évaluer le VJX 2022 sur le parcours avant de décider s’il faut un autre planeur.
 - **Remorquage en solo.** Confier l’avion remorqueur à l’IA et laisser au pilote du planeur la commande de largage.
 - **Vol à plusieurs sur la pente.** Tester une session privée avec deux pilotes au sol, des trajectoires fluides et des ascendances partagées.
 - **Remorqueur piloté en multijoueur.** Un joueur pilote l’avion tracteur, l’autre le planeur. Synchroniser la tension du câble et le largage pour les deux pilotes.

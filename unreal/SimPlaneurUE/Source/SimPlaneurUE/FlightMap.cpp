@@ -149,6 +149,14 @@ int32 SFlightMap::OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&
     Mark(Airfield::Centre*.01,TEXT("03  Piste"),FLinearColor(1,.80f,.36f),-18);
     Mark({Cirque::CenterX*.01,Cirque::CenterY*.01},TEXT("Cirque des falaises"),FLinearColor(.91f,.88f,.72f),-18);
     Mark(CirqueSite::Pilot*.01,TEXT("04  Belvédère du cirque"),FLinearColor(1,.80f,.36f),-18);
+    if(Plane->F3FCourse().Valid())
+    {
+        const auto& C=Plane->F3FCourse();
+        Mark(FVector2D(C.A*.01),TEXT("F3F A"),FLinearColor(1,.7f,.25f),-18);
+        Mark(FVector2D(C.B*.01),TEXT("F3F B"),FLinearColor(.3f,.8f,1.f),-18);
+        const FVector AP=C.A*.01, BP=C.B*.01;
+        FSlateDrawElement::MakeLines(Draw,L+5,G.ToPaintGeometry(),{Px(AP.X,AP.Y),Px(BP.X,BP.Y)},ESlateDrawEffect::None,FLinearColor(1,.7f,.25f),true,2.f);
+    }
     int32 Bungees=0,Winches=0;
     for(const auto& E:Plane->InstalledEquipment())
     {

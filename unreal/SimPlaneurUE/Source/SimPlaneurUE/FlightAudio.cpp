@@ -125,6 +125,7 @@ void ASlopeFlightPawn::PrepareFlightAudio()
     MotorAudio = MakeSource(MotorAsset,true);
     ServoAudio = MakeSource(ServoAsset,true);
     VarioAudio = MakeSource(VarioAsset,false);
+    F3FAudio = MakeSource(VarioAsset,false);
     RainAudio = MakeSource(RainAsset,false);
     FoliageAudio = MakeSource(FoliageAsset,false);
     ThunderAudio = MakeSource(ThunderAsset,true);

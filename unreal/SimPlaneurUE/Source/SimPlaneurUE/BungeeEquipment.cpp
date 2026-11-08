@@ -164,6 +164,8 @@ void ASlopeFlightPawn::SelectBungee()
 void ASlopeFlightPawn::SelectLaunchEquipment(ELaunchEquipment Type)
 {
     if (!IsWalking()) { SiteNotice = TEXT("Reviens au sol pour préparer le matériel."); return; }
+    F3FRun.Invalidate(TEXT("Changement de matériel"));
+    bF3FEnabled=false; F3FPlacement=0;
     bBungeeSelected = !bBungeeSelected || Bungee.Type!=Type;
     Bungee.Release();
     if(!Bungee.Connected())
@@ -420,7 +422,7 @@ void ASlopeFlightPawn::UpdateEquipment(float DeltaSeconds)
         }
         else PlacementPoint = Ahead;
     }
-    HandleEquipmentInput(PC->IsInputKeyDown(EKeys::E), PC->WasInputKeyJustPressed(EKeys::E),
+    if(!bF3FEnabled) HandleEquipmentInput(PC->IsInputKeyDown(EKeys::E), PC->WasInputKeyJustPressed(EKeys::E),
         PC->WasInputKeyJustReleased(EKeys::E), DeltaSeconds);
     const FLinearColor Gold(1.f,.68f,.2f), Coral(1.f,.25f,.17f), Green(.25f,.85f,.55f);
     auto Line = [&](const FVector& A,const FVector& B,FLinearColor Color,float Width)

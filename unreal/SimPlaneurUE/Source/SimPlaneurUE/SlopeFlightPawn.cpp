@@ -7,6 +7,7 @@
 #include "SceneContact.h"
 #include "ValleyAir.h"
 #include "Components/LineBatchComponent.h"
+#include "Components/AudioComponent.h"
 #include "FlightMenu.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -105,6 +106,11 @@ ASlopeFlightPawn::ASlopeFlightPawn()
     LandingBody->SetHiddenInGame(true);
     LandingBody->SetNotifyRigidBodyCollision(true);
     LandingBody->OnComponentHit.AddDynamic(this,&ASlopeFlightPawn::LandingHit);
+    F3FLines = CreateDefaultSubobject<ULineBatchComponent>(TEXT("ParcoursF3F"));
+    F3FLines->SetupAttachment(SceneRoot);
+    F3FLines->SetAbsolute(true,true,true);
+    F3FLines->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    F3FLines->SetCastShadow(false);
     EquipmentLines = CreateDefaultSubobject<ULineBatchComponent>(TEXT("MaterielLancement"));
     EquipmentLines->SetupAttachment(SceneRoot);
     EquipmentLines->SetAbsolute(true, true, true);
@@ -286,6 +292,7 @@ void ASlopeFlightPawn::BeginPlay()
     ValleyAir::LoadSettings();
     PrepareFlightAudio();
     LoadBungee();
+    F3FCircuit.Load(GGameUserSettingsIni);
     GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
     GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("TrailDistance"),TrailDistance,GGameUserSettingsIni);
     TrailDistance=FMath::Clamp(TrailDistance,20,500);
@@ -297,6 +304,7 @@ void ASlopeFlightPawn::BeginPlay()
     bLandingProof = FParse::Param(FCommandLine::Get(), TEXT("LandingProof"));
     bPilotProof = FParse::Param(FCommandLine::Get(), TEXT("PilotProof"));
     bCirqueProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("CirqueProof"));
+    bF3FProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("F3FProof"));
     bWeatherProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("WeatherProof"));
     bContactProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("ContactProof"));
     bCaptureSite = FParse::Param(FCommandLine::Get(), TEXT("CaptureSite"));
@@ -546,8 +554,10 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         OpenMenu();
         return;
     }
+    if (PlayerController->WasInputKeyJustPressed(EKeys::F9)) SelectF3F();
     if (Radio.Pressed(A::Noclip))
     {
+        F3FRun.Invalidate(TEXT("Exploration noclip"));
         ToggleNoclip();
         return;
     }
@@ -846,6 +856,7 @@ void ASlopeFlightPawn::ApplyModelSettings(FGliderLoading Setting, bool UseAilero
 
 void ASlopeFlightPawn::ResetFlight()
 {
+    F3FRun.Invalidate(TEXT("Vol interrompu"));
     ClearGroundPhysics();
     Bungee.Release();
     bInBackpack = false;
@@ -857,7 +868,7 @@ void ASlopeFlightPawn::ResetFlight()
     Flight.Reset();
     // Historical smoke/contact captures keep their airborne fixture. Interactive
     // sessions and the menu proof always prepare a manual hand launch.
-    bHeldForLaunch = !bSmokeMode || bMenuProof || bBungeeProof || bWinchProof;
+    bHeldForLaunch = !bSmokeMode || bMenuProof || bBungeeProof || bWinchProof || bF3FProof;
     ThrowSeconds = -1.f;
     Elevator = Rudder = 0.f;
     if (bHeldForLaunch)
@@ -911,6 +922,7 @@ void ASlopeFlightPawn::BeginHandLaunch()
     if (!bModelReady || !bAppearanceReady || bMenuOpen || !bHeldForLaunch || bInBackpack || IsThrowing()) return;
     if (Bungee.State == FBungeeLaunch::EState::Attached)
     {
+        if(bF3FEnabled) { SiteNotice=TEXT("F3F : lancer à la main uniquement. Détache la ligne avec E."); return; }
         const FTransform Pose = BungeeHandPose();
         if ((!Bungee.IsWinch() && BungeeTension() < Bungee.Stiffness*5.) || !ClearBungeeRoute(PilotPosition()))
         { SiteNotice = TEXT("Recule pour tendre la ligne et dégage le trajet avant de lancer."); return; }
@@ -937,6 +949,7 @@ void ASlopeFlightPawn::BeginHandLaunch()
 
 void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
 {
+    if(bF3FProof && MenuProofStep>=4) return;
     if(bGroundPhysics) { UpdateGroundPhysics(DeltaSeconds); return; }
     if (!bModelReady || bMenuOpen || bNoclip) return;
     const double Aileron = SelectedModel >= 2 ? Radio.SteeringCommand(!AileronSteering[SelectedModel]) : 0.;
@@ -969,6 +982,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
             if (UsesDiscusLaunch())
                 Velocity = Pose.GetRotation().GetForwardVector()*(.01*DiscusRadiusCm*2.*DiscusArc/DiscusDuration);
             Flight.LaunchFrom(Pose,Velocity);
+            F3FLaunch();
             bHeldForLaunch=false;
             ThrowSeconds=-1.f;
             AirspeedMps=Flight.Airspeed(); SinkMps=Flight.SinkRate();
@@ -990,6 +1004,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         const double Throttle = Radio.Command(EGliderControl::MotorCut) > .5f ? 0. : Radio.Command(EGliderControl::Motor);
         Flight.Step(Elevator,-Rudder,Aileron,Throttle,BungeeForceNED());
         RidgeLift = ValleyAir::SampleGlider(Flight, WeatherSeconds);
+        F3FPhysics(PreviousPose,Flight.WorldPose(),FGliderDynamics::TimeStep);
         ++StepsThisSecond;
         FTransform Contact;
         FHitResult Impact;
@@ -998,6 +1013,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
         if (SceneContact::SweepTopy(GetWorld(),this,PreviousPose,Flight.WorldPose(),Contact,ContactKind,
             FuselageCentre,SizeScale,Entry.WingRisePerSpan,Entry.Wheel,Entry.TipSweepCm,&Impact))
         {
+            F3FRun.Invalidate(TEXT("Contact avant la fin de la manche"));
             BeginGroundPhysics(Contact,Impact,(Entry.BodyLengthCm>0.?Entry.BodyLengthCm:Entry.LengthCm),Entry.SpanCm,Entry.WingRisePerSpan,Entry.TipSweepCm,Entry.Wheel);
             UE_LOG(LogTemp,Display,TEXT("NATIVE_FLIGHT %d hit %s"),FlightId,*ContactKind.ToString());
             break;
@@ -1054,8 +1070,9 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (!Menu.IsValid()) OpenMenu();
         else Menu->UpdateStartupPoster();
     }
-    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof) ReadControls(DeltaSeconds);
+    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof && !bF3FProof) ReadControls(DeltaSeconds);
     UpdateEquipment(DeltaSeconds);
+    UpdateF3F(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
     UpdateFlightAudio(DeltaSeconds);
     if (bModelReady && !bMenuOpen && !bNoclip && bShowWindTrails)
@@ -1083,6 +1100,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (bLandingProof) { TestLanding(SmokeElapsed); return; }
         if (bPilotProof) { TestPilotMovement(SmokeElapsed); return; }
         if (bCirqueProof) { TestCirque(SmokeElapsed); return; }
+        if (bF3FProof) { TestF3F(SmokeElapsed); return; }
         if (bWeatherProof) { TestWeather(SmokeElapsed); return; }
         if (bMenuProof) { TestMenu(SmokeElapsed); return; }
         if (bContactProof && Flight.IsStopped() && ContactKind==TEXT("tree") && ProofFlight==0)
@@ -1153,4 +1171,53 @@ void ASlopeFlightPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
         Menu.Reset();
     }
     Super::EndPlay(EndPlayReason);
+}
+
+void ASlopeFlightPawn::F3FLaunch()
+{
+    if(!bF3FEnabled || F3FPlacement || !F3FCircuit.Valid()) return;
+    if(F3FRun.State!=FF3FRun::EState::Ready) return;
+    if(Flight.Loading().MassGrams>5000) { F3FRun.Invalidate(TEXT("Masse supérieure à 5 kg")); return; }
+    if(FVector::Dist2D(PilotPosition(),(F3FCircuit.A+F3FCircuit.B)*.5)>1500.)
+    { F3FRun.Invalidate(TEXT("Lancer hors de la zone de départ")); return; }
+    F3FRun.Launch(PilotPosition().Z);
+    SiteNotice.Reset();
+}
+
+void ASlopeFlightPawn::F3FPhysics(const FTransform& Before,const FTransform& After,double Dt)
+{
+    if(!bF3FEnabled || !F3FRun.Active()) return;
+    if(Flight.MotorPowerWatts()>1.) { F3FRun.Invalidate(TEXT("Propulsion moteur utilisée")); return; }
+    const auto& M=Aircraft[SelectedModel];
+    const double Length=M.BodyLengthCm>0.?M.BodyLengthCm:M.LengthCm;
+    TArray<FVector> P,Q;
+    for(const FVector& Local : {FuselageCentre+FVector(Length*.5,0,0),FuselageCentre-FVector(Length*.5,0,0),
+        FVector(-M.TipSweepCm,M.SpanCm*.5,M.SpanCm*.5*M.WingRisePerSpan),
+        FVector(-M.TipSweepCm,-M.SpanCm*.5,M.SpanCm*.5*M.WingRisePerSpan),FVector::ZeroVector})
+    { P.Add(Before.TransformPosition(Local)); Q.Add(After.TransformPosition(Local)); }
+    const int32 Signals=F3FRun.Signals;
+    const FVector Base=(F3FRun.State==FF3FRun::EState::Entry || F3FRun.Legs%2)?F3FCircuit.A:F3FCircuit.B;
+    const FVector Eye=Base+FVector(0,0,170);
+    bool Visible=false;
+    for(const FVector& Point:Q)
+    {
+        FHitResult Hit;
+        if(!GetWorld()->LineTraceSingleByChannel(Hit,Eye,Point,SceneContact::Channel,
+            FCollisionQueryParams(SCENE_QUERY_STAT(F3FJudge),false,this))) { Visible=true; break; }
+    }
+    F3FRun.Step(F3FCircuit,P,Q,Dt,Visible);
+    if(F3FRun.Signals!=Signals && F3FAudio)
+    {
+        F3FAudio->Stop(); F3FAudio->SetVolumeMultiplier(.24f);
+        F3FAudio->SetPitchMultiplier(F3FRun.Legs==10?.8f:1.25f);
+        F3FAudio->Play(); F3FBeepUntil=FPlatformTime::Seconds()+(F3FRun.Legs==10?.65:.16);
+    }
+    const auto W=ValleyAir::Settings();
+    const FVector Mid=(F3FCircuit.A+F3FCircuit.B)*.005;
+    const FVector Sample(Mid.X,Mid.Y,-ASlopeWorld::TerrainHeightCm(Mid.X*100.,Mid.Y*100.)*.01-10.);
+    const FVector Wind=ValleyAir::Velocity(Sample,WeatherSeconds);
+    const double Speed=Wind.Size2D();
+    const bool WindOK=Speed>=3. && Speed<=25. && FVector::DotProduct(-Wind.GetSafeNormal2D(),F3FCircuit.FlyingSide)>=UE_INV_SQRT_2;
+    const bool Night=ValleyAir::SunDirection(W.SolarMinutes).Z<0. && ValleyAir::SunDirection(W.SolarMinutes-30).Z<0.;
+    F3FRun.Weather(WindOK,Night || ValleyAir::RainAt(Sample,EnvironmentSeconds,W)>.01,Dt);
 }

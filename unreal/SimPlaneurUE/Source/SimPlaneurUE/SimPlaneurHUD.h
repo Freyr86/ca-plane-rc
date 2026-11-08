@@ -19,6 +19,7 @@ private:
     double LastEquipmentActivity = -1.;
     double LastEquipmentUpdate = -1.;
     void UpdateEquipmentOpacity(const class ASlopeFlightPawn& Plane);
+    void DrawF3F(const class ASlopeFlightPawn& Plane);
     void DrawWindCompass(const class ASlopeFlightPawn& Plane);
     void DrawEquipmentHUD(const class ASlopeFlightPawn& Plane);
 };

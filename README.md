@@ -1,4 +1,4 @@
-# Ça plane ! — simulateur de planeur RC
+﻿# Ça plane ! — simulateur de planeur RC
 
 Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++ natif à 120 Hz. Le simulateur fonctionne sans service JSBSim externe.
 
@@ -56,6 +56,9 @@ Le projet reste un prototype : les réglages physiques sont affinés par compara
 | Ranger / sortir / récupérer le planeur proche | F3 |
 | Sélectionner l’élastique | F4 |
 | Sélectionner le treuil | F1 |
+| Installer / activer le parcours F3F | F9 |
+| Ranger le parcours F3F près d’un pylône | Maj + F9 |
+| Pendant la pose F3F : portes / côté de vol | G / F10 |
 | Poser, accrocher ou détacher le matériel | E |
 | Ranger l’installation près de ses extrémités | Maintenir E une seconde |
 | Courir à pied, avec ou sans planeur | Maj |
@@ -112,6 +115,12 @@ Plusieurs installations peuvent rester dans le monde. F4 permet d’en préparer
 La carte F2 affiche les installations, les lignes et les points de départ au zoom rapproché. Les deux extrémités restent repérées au sol. Les treuils disposent de leur propre quota de dix installations et des mêmes règles de remplacement dans un rayon de 500 m.
 
 La première version utilise un élastique simplifié dont la raideur est choisie selon la masse du planeur lors de l’installation. Il exerce une force au centre de masse. La ligne et les repères sont visuels.
+
+## Entraînement F3F (v0.5.6)
+
+**F9** active le F3F. Poser A avec **E**, rejoindre le repère de B à **100 m**, puis **E** confirme B. Pendant la pose, **G** choisit les portes virtuelles et **F10** inverse le côté de vol ; ces choix sont ensuite fixes. Les portes sont deux plans verticaux parallèles, perpendiculaires à la ligne A–B. Rejoindre le milieu, **E** prépare la manche et **Espace** lance à la main. Le chrono visible au centième, les dix branches, les bips et les pénalités de sécurité suivent les règles de parcours FAI. Le parcours est sauvegardé et visible sur la carte.
+
+Le mode reste un entraînement solo, avec les aides du simulateur disponibles et sans classement officiel. [Commandes, référence FAI et limites détaillées](docs/F3F.md).
 
 ## Lancement au treuil
 

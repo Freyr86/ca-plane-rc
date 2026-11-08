@@ -7,6 +7,7 @@
 #include "WindTrails.h"
 #include "BungeeLaunch.h"
 #include "LaunchInstallations.h"
+#include "F3F.h"
 #include "SlopeFlightPawn.generated.h"
 
 class USceneComponent;
@@ -113,8 +114,30 @@ public:
 
 bool TrailsVisible() const { return bShowWindTrails; }
     int32 TrailDistance=90;
+    const FF3FCourse& F3FCourse() const { return F3FCircuit; }
+    const FF3FRun& F3FStatus() const { return F3FRun; }
+    bool F3FEnabled() const { return bF3FEnabled; }
+    FString F3FPrompt() const;
     void ShowTrails(bool Visible) { bShowWindTrails=Visible; }
 private:
+    bool bF3FProof=false;
+    void TestF3F(float Elapsed);
+    FF3FCourse F3FCircuit, F3FDraft;
+    FVector F3FCentreCache=FVector::ZeroVector;
+    FVector F3FCentreGround=FVector::ZeroVector;
+    TArray<FVector> F3FCentreRing;
+    FF3FRun F3FRun;
+    bool bF3FEnabled=false, bF3FPlacementValid=false;
+    int32 F3FPlacement=0;
+    FVector F3FMarker=FVector::ZeroVector;
+    UPROPERTY() TObjectPtr<ULineBatchComponent> F3FLines;
+    UPROPERTY() TObjectPtr<UAudioComponent> F3FAudio;
+    double F3FBeepUntil=0.;
+    void UpdateF3F(float Dt);
+    void SelectF3F();
+    void InteractF3F();
+    void F3FPhysics(const FTransform& Before,const FTransform& After,double Dt);
+    void F3FLaunch();
     FLaunchInstallations LaunchInstallations;
     int32 ActiveBungeeId = INDEX_NONE;
     FString EquipmentConfirmationText;

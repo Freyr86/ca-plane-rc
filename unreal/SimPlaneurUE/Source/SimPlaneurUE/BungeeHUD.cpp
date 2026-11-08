@@ -19,7 +19,7 @@ void ASimPlaneurHUD::UpdateEquipmentOpacity(const ASlopeFlightPawn& Plane)
     if (!Plane.IsNoclip())
         Interacting |= Plane.Radio.Pressed(A::HandLaunch) || Plane.Radio.Command(A::HandLaunch) > .5f;
     for (FKey Key : {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5,
-        EKeys::F6, EKeys::F7, EKeys::F8, EKeys::F12, EKeys::E})
+        EKeys::F6, EKeys::F7, EKeys::F8, EKeys::F9, EKeys::F10, EKeys::G, EKeys::F12, EKeys::E})
         Interacting |= PlayerOwner->IsInputKeyDown(Key) || PlayerOwner->WasInputKeyJustPressed(Key);
     if (Interacting) LastEquipmentActivity = Now;
     const bool Airborne = !Plane.IsWalking() && !Plane.IsNoclip() && !Plane.IsMenuOpen();
@@ -89,7 +89,7 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
         {EGliderControl::Relaunch,TEXT("Récupérer"),false,true},
         {EGliderControl::Noclip,TEXT("Noclip"),Plane.IsNoclip(),true}};
     const float Gap=7*Scale;
-    const float Cell=(Canvas->SizeX-2*Margin-8*Gap)/9.f;
+    const float Cell=(Canvas->SizeX-2*Margin-9*Gap)/10.f;
     int32 Slot=0;
     auto Item=[&](const FString& Key,const FString& Label,bool Active,bool Enabled,bool Quiet)
     {
@@ -113,10 +113,12 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
     for(int I=0;I<UE_ARRAY_COUNT(Entries);++I)
     {
         const auto& Entry=Entries[I];
+        if(Entry.Action==EGliderControl::Noclip) Item(TEXT("F9"),TEXT("F3F"),Plane.F3FEnabled(),Plane.IsWalking()||Plane.F3FEnabled(),false);
         Item(Plane.Radio.Shortcut(Entry.Action),Entry.Label,Entry.Active,Entry.Enabled,Entry.Action==EGliderControl::Noclip);
     }
     FString Prompt=Plane.EquipmentPrompt();
     FString Notice=Plane.ExplorationNotice();
+    if(!Plane.F3FPrompt().IsEmpty()) Prompt=Plane.F3FPrompt();
     if(Prompt.IsEmpty() && Plane.IsHeldForLaunch() && !Plane.InBackpack())
     {
         Prompt=Plane.IsThrowing()?TEXT("Lancer en cours…"):TEXT("PLANEUR EN MAIN · ")+Plane.Radio.Shortcut(EGliderControl::HandLaunch)+TEXT(" pour lancer");
