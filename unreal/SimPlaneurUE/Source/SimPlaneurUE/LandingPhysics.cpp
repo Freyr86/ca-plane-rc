@@ -17,8 +17,7 @@ void ASlopeFlightPawn::BeginGroundPhysics(const FTransform& Pose,const FHitResul
     const FVector V=Flight.VelocityNED();
     LandingVelocity=FVector(V.X,V.Y,-V.Z)*100.;
     LandingAngular=Flight.AngularVelocityWorld();
-    const FVector AtContact=LandingVelocity+FVector::CrossProduct(LandingAngular,Hit.ImpactPoint-Pose.GetLocation());
-    const double ImpactSpeed=FMath::Max(0.,-FVector::DotProduct(AtContact,Hit.ImpactNormal))*.01;
+    const double ImpactSpeed=LandingContactSpeed(LandingVelocity,LandingAngular,Hit.ImpactPoint-Pose.GetLocation(),Hit.ImpactNormal);
     ImpactDamage=LandingDamage(ImpactSpeed/Flight.ImpactTolerance(),ContactKind==TEXT("water"),ContactKind!=TEXT("ground"),
         Pose.GetRotation().GetUpVector().Z<.3);
     StopFlightAt(Pose); // Disable aerodynamic control; Chaos now owns motion.
@@ -62,11 +61,18 @@ void ASlopeFlightPawn::BeginGroundPhysics(const FTransform& Pose,const FHitResul
     SiteNotice=ImpactDamage==2?TEXT("CRASH · commandes coupées"):ImpactDamage==1?TEXT("DÉGÂTS · commandes coupées"):TEXT("Contact au sol · roulage et glissade");
 }
 
-void ASlopeFlightPawn::LandingHit(UPrimitiveComponent*,AActor*,UPrimitiveComponent* Other,FVector Impulse,const FHitResult&)
+void ASlopeFlightPawn::LandingHit(UPrimitiveComponent*,AActor*,UPrimitiveComponent* Other,FVector Impulse,const FHitResult& Hit)
 {
-    if(!bGroundPhysics) return;
-    const double DeltaSpeed=Impulse.Size()/FMath::Max(.05,Flight.Loading().MassGrams*.001)*.01;
-    ImpactDamage=FMath::Max(ImpactDamage,LandingDamage(DeltaSpeed/Flight.ImpactTolerance(),Other && Other->ComponentHasTag(TEXT("water"))));
+    if(!bGroundPhysics || bLandingPaused) return;
+    // Chaos reports a resolved impulse: J/m also includes rebound and support
+    // impulses. Use the pre-physics approach velocity, as at first touchdown.
+    const double ImpactSpeed=LandingContactSpeed(LandingVelocity,LandingAngular,
+        Hit.ImpactPoint-LandingBody->GetCenterOfMass(),Hit.ImpactNormal);
+    const int32 NewDamage=LandingDamage(ImpactSpeed/Flight.ImpactTolerance(),Other && Other->ComponentHasTag(TEXT("water")));
+    if(NewDamage>ImpactDamage)
+        UE_LOG(LogTemp,Display,TEXT("LANDING_IMPACT approach=%.3f impulse_delta=%.3f damage=%d component=%s"),
+            ImpactSpeed,Impulse.Size()/FMath::Max(.05,Flight.Loading().MassGrams*.001)*.01,NewDamage,*GetNameSafe(Other));
+    ImpactDamage=FMath::Max(ImpactDamage,NewDamage);
     if(ImpactDamage) SiteNotice=ImpactDamage==2?TEXT("CRASH · commandes coupées"):TEXT("DÉGÂTS · commandes coupées");
 }
 
@@ -91,6 +97,10 @@ void ASlopeFlightPawn::UpdateGroundPhysics(float)
         bLandingPaused=false;
     }
     const FTransform Pose=LandingBody->GetComponentTransform();
+    // Pawn ticks before physics. Hit callbacks read these velocities after the
+    // solver, so a bounce cannot be mistaken for a harder incoming collision.
+    LandingVelocity=LandingBody->GetPhysicsLinearVelocity();
+    LandingAngular=LandingBody->GetPhysicsAngularVelocityInRadians();
     Flight.StopAt(Pose);
     PreviousPose=Pose;
     SetActorTransform(Pose);

@@ -135,7 +135,7 @@ FString ASlopeFlightPawn::BackpackAction() const
 void ASlopeFlightPawn::ToggleBackpack()
 {
     if (bMenuOpen || bNoclip || IsThrowing() || bGroundPhysics) return;
-    SelectNearbyBungee();
+    if(!IsTutorialActive()) SelectNearbyBungee();
     if (!bHeldForLaunch)
     {
         if (!Flight.IsStopped()) { SiteNotice = TEXT("Le planeur est en vol."); return; }

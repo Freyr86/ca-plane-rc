@@ -1,6 +1,15 @@
 #pragma once
 #include "CoreMinimal.h"
 
+// Unreal velocities/offsets are cm/s and cm; return the closing speed in m/s.
+// Sliding along a surface or separating from it must not count as an impact.
+inline double LandingContactSpeed(const FVector& Velocity,const FVector& AngularVelocity,
+    const FVector& ContactOffset,const FVector& SurfaceNormal)
+{
+    const FVector AtContact=Velocity+FVector::CrossProduct(AngularVelocity,ContactOffset);
+    return FMath::Max(0.,-FVector::DotProduct(AtContact,SurfaceNormal.GetSafeNormal()))*.01;
+}
+
 // Prototype thresholds in m/s normal to the struck surface, not total airspeed.
 inline int32 LandingDamage(double NormalSpeed,bool Water=false,bool Obstacle=false,bool Inverted=false)
 {

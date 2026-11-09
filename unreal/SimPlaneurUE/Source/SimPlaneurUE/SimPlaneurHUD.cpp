@@ -42,6 +42,7 @@ void ASimPlaneurHUD::DrawHUD()
     }
     DrawWindCompass(*Plane);
     DrawF3F(*Plane);
+    DrawFirstFlightTutorial(*Plane);
     if(Plane->DamageLevel()>0)
     {
         const bool Crash=Plane->DamageLevel()==2;

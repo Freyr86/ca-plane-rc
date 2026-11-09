@@ -132,6 +132,7 @@ namespace
             else if(Mark=="Weather"){Lines({{6,24},{3,22},{3,18},{6,15},{10,15},{12,10},{16,8},{20,9},{23,14},{27,15},{29,18},{28,22},{25,24},{6,24}});Lines({{4,28},{20,28}},1);}
             else if(Mark=="Settings"){for(int I=0;I<3;++I){float Y=7+I*9,U=I==1?20:10;Lines({{3,Y},{29,Y}},1);Lines({{U,Y-3},{U,Y+3}},3);}}
             else if(Mark=="Credits"){Lines({{3,6},{10,5},{16,8},{22,5},{29,6},{29,25},{22,24},{16,27},{10,24},{3,25},{3,6}});Lines({{16,8},{16,27}},1.3f);}
+            else if(Mark=="Tutorial"){Lines({{2,12},{16,5},{30,12},{16,19},{2,12}});Lines({{7,15},{7,23},{16,27},{25,23},{25,15}});Lines({{30,12},{30,24}},1.3f);}
             else {Lines({{16,2},{16,15}},2.5f);TArray<FVector2f> P;for(int I=0;I<=24;++I){float A=-.9f+4.95f*I/24;P.Add({16+11*FMath::Cos(A),17+11*FMath::Sin(A)});}Lines(P,2.2f);}
             return L;
         }
@@ -510,7 +511,7 @@ void SFlightMenu::Build()
     if (Page==EPage::Home) Home(*List);
     else
     {
-        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : TEXT("Graphismes");
+        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : Page==EPage::Tutorials ? TEXT("Mon 1er vol") : TEXT("Graphismes");
         Add(*List,Text(Title,27,Ink,TEXT("BoldItalic")),4);
         Add(*List,Line(Ink),10);
         if (Page==EPage::Hangar) Hangar(*List);
@@ -519,6 +520,7 @@ void SFlightMenu::Build()
         if (Page==EPage::Weather) Weather(*List);
         if (Page==EPage::Vario) Vario(*List);
         if (Page==EPage::Map) Map(*List);
+        if (Page==EPage::Tutorials) Tutorials(*List);
         if (Page==EPage::Equipment)
         {
             Add(*List,Text(TEXT("ÉLASTIQUE / TREUIL"),12,MutedInk,TEXT("Bold")),8);
@@ -598,11 +600,53 @@ void SFlightMenu::Home(SVerticalBox& List)
     };
     Row("Fly",Plane->IsNoclip()?TEXT("REPRENDRE"):Plane->HasStartedFlight()?TEXT("REPRENDRE LE VOL"):TEXT("PRENDRE L’AIR"),[this]{Plane->Fly();},true);
     Row("Hangar",TEXT("HANGAR"),[this]{Go(EPage::Hangar);});
+    Row("Tutorial",TEXT("TUTO"),[this]{Go(EPage::Tutorials);});
     Row("OpenMap",TEXT("CARTE"),[this]{Go(EPage::Map);});
     Row("Weather",TEXT("MÉTÉO"),[this]{Go(EPage::Weather);});
     Row("Settings",TEXT("RÉGLAGES"),[this]{Go(EPage::Settings);});
     Row("Credits",TEXT("CRÉDITS"),[this]{Go(EPage::Credits);});
     Row("Quit",TEXT("QUITTER"),[this]{if(auto* PC=Cast<APlayerController>(Plane->GetController())) UKismetSystemLibrary::QuitGame(Plane.Get(),PC,EQuitPreference::Quit,false);});
+}
+
+void SFlightMenu::Tutorials(SVerticalBox& List)
+{
+    Add(List,Text(TEXT("TUTO  /  CHALET DU VERSANT"),11,MutedInk,TEXT("Bold")),8);
+    auto Intro=Text(TEXT("Prends tes repères au site 2, découvre le vent puis effectue ton premier vol avec le Topy. Une consigne à la fois, à ton rythme."),13,Ink);
+    // The tutorial lives in the fixed 398-unit side panel. An explicit wrap
+    // width gives its ScrollBox a correct multiline desired height on first layout.
+    Intro->SetWrapTextAt(340.f);
+    Add(List,Intro,12);
+
+    const bool Active=Plane->IsTutorialActive();
+    if(Active)
+        Add(List,Button(TEXT("TutorialResume"),TEXT("Reprendre mon 1er vol"),[this]{Plane->Fly();},true),7);
+    auto Start=Button(TEXT("TutorialStart"),Active?TEXT("Recommencer le tutoriel"):TEXT("Commencer mon 1er vol"),
+        [this]{Plane->StartFirstFlightTutorial();},!Active);
+    Start->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
+    Add(List,Start,7);
+    if(Active)
+        Add(List,Button(TEXT("TutorialExit"),TEXT("Quitter le tutoriel"),[this]{Plane->EndFirstFlightTutorial();Go(EPage::Home);}),7);
+
+    Add(List,Line(Ink),11);
+    Add(List,Text(TEXT("LE PARCOURS"),11,MutedInk,TEXT("Bold")),8);
+    const TCHAR* Steps[]={
+        TEXT("01  Rejoindre le repère à pied"),
+        TEXT("02  Observer la manche à air"),
+        TEXT("03  Afficher les filets d’air"),
+        TEXT("04  Tester direction et profondeur"),
+        TEXT("05  Sortir le Topy et le lancer"),
+        TEXT("06  Tenir en l’air environ 2 min 30"),
+        TEXT("07  Préparer l’approche et atterrir"),
+        TEXT("08  Rejoindre et récupérer le planeur")};
+    for(const TCHAR* Step:Steps) Add(List,Text(Step,12,Ink),5);
+
+    Add(List,Line(Ink),10);
+    auto Recovery=Text(TEXT("Perdu de vue ou crashé ? La commande « Récupérer » permet de réessayer sans refaire l’introduction. Les consignes affichent tes touches attribuées."),12,MutedInk);
+    Recovery->SetWrapTextAt(340.f);
+    Add(List,Recovery,10);
+    auto Conditions=Text(TEXT("Météo douce au départ, puis vent progressivement réduit pour préparer le posé. Tes réglages personnels sont restaurés à la sortie du tutoriel."),12,MutedInk);
+    Conditions->SetWrapTextAt(340.f);
+    Add(List,Conditions,14);
 }
 
 void SFlightMenu::Hangar(SVerticalBox& List)

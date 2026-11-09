@@ -300,6 +300,7 @@ void ASlopeFlightPawn::BeginPlay()
         ASlopeWorld::TerrainHeightCm(ASlopeWorld::PilotX,ASlopeWorld::PilotY));
     bSmokeMode = FParse::Param(FCommandLine::Get(), TEXT("SimSmoke"));
     bBungeeProof = FParse::Param(FCommandLine::Get(), TEXT("BungeeProof"));
+    bTutorialProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("TutorialProof"));
     bWinchProof = FParse::Param(FCommandLine::Get(), TEXT("WinchProof"));
     bLandingProof = FParse::Param(FCommandLine::Get(), TEXT("LandingProof"));
     bPilotProof = FParse::Param(FCommandLine::Get(), TEXT("PilotProof"));
@@ -310,7 +311,7 @@ void ASlopeFlightPawn::BeginPlay()
     bCaptureSite = FParse::Param(FCommandLine::Get(), TEXT("CaptureSite"));
     bMeadowProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("MeadowProof"));
     bMenuProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("MenuProof"));
-    bMenuOpen = !bSmokeMode || bMenuProof;
+    bMenuOpen = !bSmokeMode || bMenuProof || bTutorialProof;
     bStartedFlight = !bMenuOpen;
     SetActorHiddenInGame(bMenuOpen);
     Radio.Initialize();
@@ -554,8 +555,8 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
         OpenMenu();
         return;
     }
-    if (PlayerController->WasInputKeyJustPressed(EKeys::F9)) SelectF3F();
-    if (Radio.Pressed(A::Noclip))
+    if (!IsTutorialActive() && PlayerController->WasInputKeyJustPressed(EKeys::F9)) SelectF3F();
+    if (!IsTutorialActive() && Radio.Pressed(A::Noclip))
     {
         F3FRun.Invalidate(TEXT("Exploration noclip"));
         ToggleNoclip();
@@ -571,13 +572,15 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
     const float TargetElevator=FMath::Clamp(Rate*Radio.Command(A::Elevator)+Radio.Command(A::TrimElevator),-1.f,1.f);
     Elevator = Radio.IsDriving() ? TargetElevator : FMath::FInterpConstantTo(Elevator, TargetElevator, DeltaSeconds, 3.0f);
     Rudder = Radio.IsDriving() ? TargetRudder : FMath::FInterpConstantTo(Rudder, TargetRudder, DeltaSeconds, 3.0f);
-    if (Radio.Pressed(A::Backpack)) ToggleBackpack();
-    if (Radio.Pressed(A::Equipment)) SelectBungee();
-    if (Radio.Pressed(A::Winch)) SelectLaunchEquipment(ELaunchEquipment::Winch);
+    if(Tutorial.Step==EFirstFlightStep::Controls)
+        Tutorial.ObserveControls(Radio.Command(AileronSteering[SelectedModel]?A::Aileron:A::Rudder),Radio.Command(A::Elevator));
+    if (Radio.Pressed(A::Backpack) && (!IsTutorialActive() || Tutorial.Step==EFirstFlightStep::Launch || Tutorial.Step==EFirstFlightStep::Retrieve)) ToggleBackpack();
+    if (!IsTutorialActive() && Radio.Pressed(A::Equipment)) SelectBungee();
+    if (!IsTutorialActive() && Radio.Pressed(A::Winch)) SelectLaunchEquipment(ELaunchEquipment::Winch);
     if (Bungee.State == FBungeeLaunch::EState::Towing && (Radio.Pressed(A::TowRelease) || PlayerController->WasInputKeyJustPressed(EKeys::E))) Bungee.Release();
     if (Radio.Pressed(A::Relaunch))
     {
-        ResetFlight();
+        if(IsTutorialActive()) RecoverFirstFlightTutorial(); else ResetFlight();
     }
     else
     {
@@ -589,8 +592,11 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
     if (Radio.Pressed(A::WindTrails))
     {
         bShowWindTrails = !bShowWindTrails;
-        GConfig->SetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
-        GConfig->Flush(false,GGameUserSettingsIni);
+        if(!IsTutorialActive())
+        {
+            GConfig->SetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
+            GConfig->Flush(false,GGameUserSettingsIni);
+        }
     }
     if (Radio.Pressed(A::Camera) && !bHeldForLaunch)
     {
@@ -729,6 +735,7 @@ void ASlopeFlightPawn::MovePilot(const FVector& Direction,float DeltaSeconds,boo
 void ASlopeFlightPawn::SwitchLaunchSite(int32 Step)
 {
     if (!bMenuOpen || !bModelReady) return;
+    if(IsTutorialActive()) EndFirstFlightTutorial();
     constexpr int32 Count=4;
     const int32 Next=(SelectedSite-1+Step+Count)%Count+1;
     const FVector Landing=Next==4 ? FVector(CirqueSite::Pilot,0) : Next==3 ? FVector(Airfield::Pilot,0) : Next==2 ? FVector(ASlopeWorld::ChaletX+430,ASlopeWorld::ChaletY,0)
@@ -747,6 +754,7 @@ void ASlopeFlightPawn::SwitchLaunchSite(int32 Step)
 
 void ASlopeFlightPawn::ExploreScene()
 {
+    if(IsTutorialActive()) EndFirstFlightTutorial();
     Fly();
     if (!bMenuOpen && !bNoclip) ToggleNoclip();
 }
@@ -822,6 +830,12 @@ void ASlopeFlightPawn::Fly()
 void ASlopeFlightPawn::ApplyModelSettings(FGliderLoading Setting, bool UseAilerons, FGliderControlGains Gains, FFlapTravel Travel, FGliderMotor Motor)
 {
     if (!CanSelectModel() || !bMenuOpen) return;
+    if(IsTutorialActive())
+    {
+        const int32 Choice=PreviewModel;
+        EndFirstFlightTutorial();
+        PreviewModel=Choice;
+    }
     Setting = LimitLoading(Setting);
     if (SelectedModel == PreviewModel && Setting == Flight.Loading() && UseAilerons == AileronSteering[SelectedModel]
         && Gains == Flight.ControlGains() && Travel == Flight.FlapTravel() && Motor == Flight.MotorSettings()) return;
@@ -868,7 +882,7 @@ void ASlopeFlightPawn::ResetFlight()
     Flight.Reset();
     // Historical smoke/contact captures keep their airborne fixture. Interactive
     // sessions and the menu proof always prepare a manual hand launch.
-    bHeldForLaunch = !bSmokeMode || bMenuProof || bBungeeProof || bWinchProof || bF3FProof;
+    bHeldForLaunch = !bSmokeMode || bMenuProof || bBungeeProof || bWinchProof || bF3FProof || bTutorialProof;
     ThrowSeconds = -1.f;
     Elevator = Rudder = 0.f;
     if (bHeldForLaunch)
@@ -919,6 +933,10 @@ FTransform ASlopeFlightPawn::HandPose(float Progress) const
 
 void ASlopeFlightPawn::BeginHandLaunch()
 {
+    if(IsTutorialActive() && Tutorial.Step!=EFirstFlightStep::Launch) return;
+    if(IsTutorialActive() && (FVector::Dist2D(PilotPosition(),Tutorial.LaunchPoint)>2000.
+        || FMath::Abs(FMath::FindDeltaAngleDegrees(LaunchHeading,TutorialHeading))>60.f))
+    { SiteNotice=TEXT("Tuto : rejoins le départ et regarde face au vent indiqué par la boussole."); return; }
     if (!bModelReady || !bAppearanceReady || bMenuOpen || !bHeldForLaunch || bInBackpack || IsThrowing()) return;
     if (Bungee.State == FBungeeLaunch::EState::Attached)
     {
@@ -1059,6 +1077,11 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         }
     }
     Radio.Poll(Cast<APlayerController>(GetController()),bMenuOpen,true);
+    if(bTutorialStarting && bAppearanceReady)
+    {
+        Fly(); bTutorialStarting=bMenuOpen;
+        PlaneVisual->SetHiddenInGame(bInBackpack,true);
+    }
     if (!Radio.EditingKeyboard() && !Radio.HasDevice() && (RadioScanTime += DeltaSeconds) >= 3.f)
     {
         RadioScanTime = 0.f;
@@ -1070,10 +1093,11 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         if (!Menu.IsValid()) OpenMenu();
         else Menu->UpdateStartupPoster();
     }
-    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof && !bF3FProof) ReadControls(DeltaSeconds);
-    UpdateEquipment(DeltaSeconds);
+    else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof && !bF3FProof && !bTutorialProof) ReadControls(DeltaSeconds);
+    if(!IsTutorialActive()) UpdateEquipment(DeltaSeconds);
     UpdateF3F(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
+    UpdateFirstFlightTutorial(DeltaSeconds);
     UpdateFlightAudio(DeltaSeconds);
     if (bModelReady && !bMenuOpen && !bNoclip && bShowWindTrails)
     {
@@ -1095,6 +1119,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
     if (bSmokeMode || bCaptureSite)
     {
         SmokeElapsed += DeltaSeconds;
+        if (bTutorialProof) { TestFirstFlightTutorial(SmokeElapsed); return; }
         if (bBungeeProof) { TestBungee(SmokeElapsed); return; }
         if (bWinchProof) { TestWinch(SmokeElapsed); return; }
         if (bLandingProof) { TestLanding(SmokeElapsed); return; }
@@ -1163,6 +1188,7 @@ FString ASlopeFlightPawn::GetContactLabel() const
 
 void ASlopeFlightPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    if(IsTutorialActive()) EndFirstFlightTutorial();
     ImportedTopy->SetTextureForceResidentFlag(false);
     if (Menu.IsValid() && GEngine && GEngine->GameViewport)
     {

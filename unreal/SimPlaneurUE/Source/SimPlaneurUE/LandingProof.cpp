@@ -78,6 +78,25 @@ void ASlopeFlightPawn::TestLanding(float Elapsed)
     case 12:
         OK=ImpactDamage==2 && !bGroundPhysics && IsWalking();
         break;
+    case 13:
+    {
+        // A firm but upright Topy landing must survive the Chaos handover,
+        // rebound and sliding as well as the initial contact classification.
+        ResetFlight(); bHeldForLaunch=false;
+        const FVector P=MenuProofLocation+FVector(0,0,5);
+        Flight.LaunchFrom(FTransform(FRotator(0,135,0),P),FVector(-6,6,-2.));
+        FHitResult Hit; Hit.ImpactNormal=FVector::UpVector; Hit.ImpactPoint=MenuProofLocation;
+        ContactKind=TEXT("ground");
+        BeginGroundPhysics(Flight.WorldPose(),Hit,86,119,7.5/59.5,0,FVector4(0,0,0,0));
+        OK=ImpactDamage==0 && bGroundPhysics;
+        break;
+    }
+    case 14: case 15:
+        OK=ImpactDamage==0;
+        break;
+    case 16:
+        OK=ImpactDamage==0 && !bGroundPhysics;
+        break;
     default:
         UE_LOG(LogTemp,Display,TEXT("LANDING_PROOF complete"));
         FPlatformMisc::RequestExitWithStatus(false,0);return;

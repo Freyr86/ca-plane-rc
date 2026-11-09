@@ -3,6 +3,10 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "CanvasItem.h"
+#include "Engine/Font.h"
+#include "Styling/CoreStyle.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Fonts/FontMeasure.h"
 #include "GameFramework/PlayerController.h"
 
 void ASimPlaneurHUD::UpdateEquipmentOpacity(const ASlopeFlightPawn& Plane)
@@ -22,8 +26,7 @@ void ASimPlaneurHUD::UpdateEquipmentOpacity(const ASlopeFlightPawn& Plane)
         EKeys::F6, EKeys::F7, EKeys::F8, EKeys::F9, EKeys::F10, EKeys::G, EKeys::F12, EKeys::E})
         Interacting |= PlayerOwner->IsInputKeyDown(Key) || PlayerOwner->WasInputKeyJustPressed(Key);
     if (Interacting) LastEquipmentActivity = Now;
-    const bool Airborne = !Plane.IsWalking() && !Plane.IsNoclip() && !Plane.IsMenuOpen();
-    const float Target = Now-LastEquipmentActivity < 2.5 ? .9f : (Airborne ? .2f : .4f);
+    const float Target = Now-LastEquipmentActivity < 2.5 ? .9f : .5f;
     // Exponential interpolation is independent of frame rate, with a faster
     // return to readability and a gentle fade after the last interaction.
     const double Delta = FMath::Max(0., Now-LastEquipmentUpdate);
@@ -76,8 +79,82 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
         Shape.BlendMode=SE_BLEND_Translucent;
         Canvas->DrawItem(Shape);
     };
-    // Decorative layers fade faster than the controls themselves.
-    DrawRect(FLinearColor(.012f,.065f,.075f,.94f*FMath::Pow(EquipmentOpacity,3.f)),0,Bottom,Canvas->SizeX,76.f*Scale);
+    // One continuous petrol rail, matching the menu and the ivory instruments.
+    // All layers share the same 50% idle / 90% interaction opacity.
+    const FLinearColor Ink(.009f,.078f,.076f), Ivory(1.f,.955f,.82f),
+        Accent(.85f,.142f,.077f), Brass(.75f,.41f,.075f);
+    DrawRect(Fade(Ink),0,Bottom,Canvas->SizeX,76.f*Scale);
+    if(!CompassFont)
+    {
+        CompassFont=NewObject<UFont>(this);
+        CompassFont->FontCacheType=EFontCacheType::Runtime;
+        CompassFont->GetMutableInternalCompositeFont()=*FCoreStyle::GetDefaultFontStyle(TEXT("Regular"),12).GetCompositeFont();
+    }
+    const auto Measure=FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+    auto LabelText=[&](const FString& Value,float X,float Y,float Size,FLinearColor Colour,float MaxWidth,FName Face=TEXT("BoldItalic"))
+    {
+        FSlateFontInfo Info(CompassFont,FMath::Max(6,FMath::RoundToInt(Size*Scale)),Face);
+        const FVector2D Extent=Measure->Measure(Value,Info);
+        const float Fit=FMath::Min(1.f,MaxWidth/FMath::Max(1.f,float(Extent.X)));
+        FCanvasTextItem Text(FVector2D(X,Y),FText::FromString(Value),Info,Fade(Colour));
+        Text.Scale=FVector2D(Fit,Fit);
+        Text.bDontCorrectStereoscopic=true;
+        Canvas->DrawItem(Text);
+        return float(Extent.X)*Fit;
+    };
+    auto Solid=[&](const TArray<FVector2D>& Points,FLinearColor Colour)
+    {
+        TArray<FCanvasUVTri> Tris;
+        for(int I=1;I+1<Points.Num();++I)
+        {
+            FCanvasUVTri T;
+            T.V0_Pos=Points[0]; T.V1_Pos=Points[I]; T.V2_Pos=Points[I+1];
+            T.V0_Color=T.V1_Color=T.V2_Color=Fade(Colour); Tris.Add(T);
+        }
+        FCanvasTriangleItem Item(Tris,GWhiteTexture); Item.BlendMode=SE_BLEND_Translucent; Canvas->DrawItem(Item);
+    };
+    // Small line drawings keep the shortcuts legible without texture assets.
+    auto Icon=[&](int Kind,float X,float Y,FLinearColor Colour)
+    {
+        auto L=[&](double AX,double AY,double BX,double BY)
+        { DrawLine(X+AX*Scale,Y+AY*Scale,X+BX*Scale,Y+BY*Scale,Fade(Colour),1.5f*Scale); };
+        auto C=[&](double CX,double CY,double R)
+        { for(int I=0;I<24;++I) {const double A=I*UE_TWO_PI/24,B=(I+1)*UE_TWO_PI/24; L(CX+R*FMath::Cos(A),CY+R*FMath::Sin(A),CX+R*FMath::Cos(B),CY+R*FMath::Sin(B));} };
+        switch(Kind)
+        {
+        case 0: // Winch drum
+            L(3,5,3,22); L(27,5,27,22); L(3,8,27,8); L(3,19,27,19);
+            for(int I=7;I<27;I+=4) L(I,7,I,20);
+            L(0,24,30,24); L(0,13,3,13); L(27,13,32,13); break;
+        case 1: // Folded map
+            L(2,6,11,2); L(11,2,21,6); L(21,6,30,2); L(30,2,30,22);
+            L(30,22,21,26); L(21,26,11,22); L(11,22,2,26); L(2,26,2,6);
+            L(11,2,11,22); L(21,6,21,26); break;
+        case 2: // Backpack
+            L(7,8,7,26); L(7,26,26,26); L(26,26,26,8); L(26,8,7,8);
+            L(12,8,12,3); L(12,3,21,3); L(21,3,21,8);
+            L(11,17,22,17); L(11,17,11,23); L(11,23,22,23); L(22,23,22,17); break;
+        case 3: // Elastic coil and anchor
+            L(0,15,5,15); L(27,15,32,15);
+            for(int I=0;I<5;++I) {L(5+I*4,15,7+I*4,6); L(7+I*4,6,11+I*4,24); L(11+I*4,24,13+I*4,15);} break;
+        case 4: // Air streams
+            L(0,8,24,8); L(5,15,32,15); L(0,22,22,22); L(24,8,28,4); L(22,22,27,26); break;
+        case 5: // Vario chevrons
+            L(5,14,16,3); L(16,3,27,14); L(5,25,16,14); L(16,14,27,25); break;
+        case 6: // Camera
+            L(2,8,9,8); L(9,8,12,3); L(12,3,21,3); L(21,3,24,8); L(24,8,31,8);
+            L(31,8,31,26); L(31,26,2,26); L(2,26,2,8); C(16,17,6); break;
+        case 7: // Return arrow above a glider
+            L(3,18,30,18); L(16,10,16,28); L(10,26,22,26);
+            L(27,8,8,8); L(8,8,13,3); L(8,8,13,13); break;
+        case 8: // F3F gates
+            L(6,2,6,28); L(26,2,26,28); L(6,2,16,7); L(16,7,6,12);
+            L(26,2,36,7); L(36,7,26,12); L(6,24,26,24); break;
+        case 9: // Exploration eye
+            L(0,15,8,7); L(8,7,24,7); L(24,7,32,15); L(32,15,24,23);
+            L(24,23,8,23); L(8,23,0,15); C(16,15,5); L(2,28,30,2); break;
+        }
+    };
     struct FEntry { EGliderControl Action; FString Label; bool Active; bool Enabled; };
     const FString BagLabel=Plane.InBackpack()?TEXT("Sortir le planeur"):Plane.IsHeldForLaunch()?TEXT("Ranger le planeur"):TEXT("Récupérer à pied");
     const FEntry Entries[] = {
@@ -88,25 +165,33 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
         {EGliderControl::Camera,TEXT("Caméra"),false,!Plane.IsWalking()&&!Plane.IsNoclip()},
         {EGliderControl::Relaunch,TEXT("Récupérer"),false,true},
         {EGliderControl::Noclip,TEXT("Noclip"),Plane.IsNoclip(),true}};
-    const float Gap=7*Scale;
-    const float Cell=(Canvas->SizeX-2*Margin-9*Gap)/10.f;
+    const float Cell=(Canvas->SizeX-2*Margin)/10.f;
     int32 Slot=0;
     auto Item=[&](const FString& Key,const FString& Label,bool Active,bool Enabled,bool Quiet)
     {
-        const float X=Margin+Slot++*(Cell+Gap), Y=Bottom+10*Scale, H=56*Scale;
-        const FLinearColor Accent=Quiet?Muted:Gold;
-        Rounded(X,Y+3*Scale,Cell,H,6*Scale,FLinearColor(0,0,0,.35f*EquipmentOpacity*EquipmentOpacity));
-        Rounded(X,Y,Cell,H,6*Scale,Active?Accent:FLinearColor(.12f,.28f,.29f),Scale);
-        Rounded(X+Scale,Y+Scale,Cell-2*Scale,H-2*Scale,5*Scale,Active?FLinearColor(.08f,.27f,.28f):Surface);
-        float KW,KH; GetTextSize(Key,KW,KH,Font,.92f*Scale);
-        const float KeyWidth=FMath::Min(Cell-18*Scale,FMath::Max(32*Scale,KW+14*Scale));
-        Rounded(X+8*Scale,Y+7*Scale,KeyWidth,21*Scale,4*Scale,Enabled?Cream:Muted);
-        const float KeyScale=FMath::Min(.92f*Scale,(KeyWidth-8*Scale)/FMath::Max(1.f,KW)*.92f*Scale);
-        DrawText(Key,Fade(Petrol),X+14*Scale,Y+10*Scale,Font,KeyScale);
-        Rounded(X+Cell-14*Scale,Y+13*Scale,5*Scale,5*Scale,2.5f*Scale,Active?Accent:Muted*.5f);
-        float W,HText; GetTextSize(Label,W,HText,Font,.91f*Scale);
-        const float TextScale=.91f*Scale*FMath::Min(1.f,(Cell-16*Scale)/FMath::Max(1.f,W));
-        DrawText(Label,Fade(Enabled?Cream:Muted),X+8*Scale,Y+36*Scale,Font,TextScale);
+        const int Index=Slot++;
+        if(Plane.IsTutorialActive())
+        {
+            const auto Step=Plane.TutorialStatus().Step;
+            if(Index==0 || Index==3 || Index==8 || Index==9) Enabled=false;
+            if(Index==2) Enabled=Enabled && (Step==EFirstFlightStep::Launch || Step==EFirstFlightStep::Retrieve);
+            if(Index==7) Enabled=Step>=EFirstFlightStep::Launch && Step!=EFirstFlightStep::Complete;
+        }
+        const float X=Margin+Index*Cell, Y=Bottom+7*Scale, H=62*Scale;
+        const FLinearColor Foreground=(Quiet||!Enabled)?Muted:Ivory;
+        const bool Selected=Active && (Index==0 || Index==3 || Index==8);
+        if(Selected)
+        {
+            Solid({{X+9*Scale,Y},{X+Cell-3*Scale,Y},{X+Cell-12*Scale,Y+H},{X,Y+H}},Accent);
+            DrawRect(Fade(Ivory),X+12*Scale,Y+H-5*Scale,Cell-32*Scale,2*Scale);
+        }
+        else if(Index>0) DrawRect(Fade(Brass),X,Y+6*Scale,Scale,H-12*Scale);
+        const float KeyWidth=FMath::Clamp(float(Key.Len())*8.f*Scale+12*Scale,30*Scale,Cell-55*Scale);
+        Rounded(X+10*Scale,Y+5*Scale,KeyWidth,19*Scale,2*Scale,Foreground);
+        LabelText(Key,X+15*Scale,Y+5*Scale,12,Ink,KeyWidth-8*Scale,TEXT("Bold"));
+        Icon(Index,X+Cell-46*Scale,Y+3*Scale,Foreground);
+        if(Active && !Selected) Rounded(X+Cell-9*Scale,Y+4*Scale,5*Scale,5*Scale,2.5f*Scale,Gold);
+        LabelText(Label,X+10*Scale,Y+35*Scale,13,Foreground,Cell-19*Scale);
     };
     Item(Plane.Radio.Shortcut(EGliderControl::Winch),TEXT("Treuil"),Plane.WinchSelected()||(Plane.BungeeStatus().Installed()&&Plane.BungeeStatus().IsWinch()),Plane.IsWalking(),false);
     Item(TEXT("F2"),TEXT("Carte"),false,true,false);
@@ -133,14 +218,16 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
     if (!Plane.IsNoclip() && (!Prompt.IsEmpty() || !Notice.IsEmpty() || Plane.InBackpack()))
     {
         const float Y=Bottom-64*Scale;
-        Rounded(Margin,Y,Canvas->SizeX-2*Margin,58*Scale,6*Scale,FLinearColor(.025f,.12f,.14f,.92f));
-        DrawText(Prompt.IsEmpty() ? (Plane.InBackpack()?TEXT("PLANEUR AU SAC · WASD / ZQSD marcher · Maj courir"):Notice) : Prompt,
-            Fade(Gold),Margin+10*Scale,Y+8*Scale,Font,Scale);
+        const FString Main=Prompt.IsEmpty() ? (Plane.InBackpack()?TEXT("PLANEUR AU SAC · WASD / ZQSD marcher · Maj courir"):Notice) : Prompt;
+        const FSlateFontInfo HintFont(CompassFont,FMath::Max(6,FMath::RoundToInt(12*Scale)),TEXT("BoldItalic"));
+        const float Desired=FMath::Max(float(Measure->Measure(Main,HintFont).X),float(Measure->Measure(Notice,HintFont).X))+42*Scale;
+        const float HintWidth=FMath::Clamp(Desired,340*Scale,Canvas->SizeX-2*Margin);
+        Rounded(Margin,Y,HintWidth,55*Scale,5*Scale,Ink);
+        DrawRect(Fade(Gold),Margin+10*Scale,Y+9*Scale,2*Scale,36*Scale);
+        LabelText(Main,Margin+23*Scale,Y+6*Scale,12,Ivory,HintWidth-36*Scale);
         if (!Prompt.IsEmpty() || Plane.InBackpack())
         {
-            float W,H; GetTextSize(Notice,W,H,Font,.86f*Scale);
-            const float Fit=FMath::Min(1.f,(Canvas->SizeX-2*Margin-20*Scale)/FMath::Max(1.f,W));
-            DrawText(Notice,Fade(Cream),Margin+10*Scale,Y+32*Scale,Font,.86f*Scale*Fit);
+            LabelText(Notice,Margin+23*Scale,Y+31*Scale,10,Ivory,HintWidth-36*Scale,TEXT("Regular"));
         }
     }
     const auto& Bungee=Plane.BungeeStatus();

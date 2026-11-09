@@ -8,6 +8,8 @@
 #include "BungeeLaunch.h"
 #include "LaunchInstallations.h"
 #include "F3F.h"
+#include "FirstFlightTutorial.h"
+#include "ValleyAir.h"
 #include "SlopeFlightPawn.generated.h"
 
 class USceneComponent;
@@ -26,6 +28,10 @@ class SIMPLANEURUE_API ASlopeFlightPawn : public APawn
     GENERATED_BODY()
 
 public:
+    void StartFirstFlightTutorial();
+    void EndFirstFlightTutorial();
+    bool IsTutorialActive() const { return Tutorial.Active(); }
+    const FFirstFlightTutorial& TutorialStatus() const { return Tutorial; }
     ASlopeFlightPawn();
     virtual void BeginPlay() override;
     virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
@@ -120,6 +126,20 @@ bool TrailsVisible() const { return bShowWindTrails; }
     FString F3FPrompt() const;
     void ShowTrails(bool Visible) { bShowWindTrails=Visible; }
 private:
+    FFirstFlightTutorial Tutorial;
+    ValleyAir::FWeatherSettings TutorialPreviousWeather, TutorialWeather;
+    FGliderDynamics TutorialPreviousFlight;
+    FBungeeLaunch TutorialPreviousBungee;
+    int32 TutorialPreviousModel=0, TutorialPreviousPreview=0, TutorialPreviousSite=1, TutorialPreviousView=0, TutorialPreviousBungeeId=INDEX_NONE;
+    FVector TutorialPreviousPilot=FVector::ZeroVector;
+    FVector2D TutorialPreviousOffset=FVector2D::ZeroVector;
+    float TutorialPreviousHeading=0, TutorialPreviousPitch=0, TutorialHeading=0;
+    bool TutorialPreviousTrails=false, TutorialPreviousF3F=false;
+    bool bTutorialProof=false;
+    bool bTutorialStarting=false;
+    void UpdateFirstFlightTutorial(float Dt);
+    void RecoverFirstFlightTutorial();
+    void TestFirstFlightTutorial(float Elapsed);
     bool bF3FProof=false;
     void TestF3F(float Elapsed);
     FF3FCourse F3FCircuit, F3FDraft;
