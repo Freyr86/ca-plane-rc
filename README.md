@@ -2,6 +2,18 @@
 
 Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++ natif à 120 Hz. Le simulateur fonctionne sans service JSBSim externe.
 
+**Bêta v0.5.7 : le premier tutoriel est disponible !** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.7).
+
+## Mon 1er vol
+
+Depuis le menu principal, ouvrir **TUTO → Mon 1er vol**. Au chalet, une leçon interactive accompagne les premiers pas avec le Graupner Topy : rejoindre le départ, observer la manche à air, afficher les filets d’air, vérifier la direction et la profondeur, puis lancer le planeur.
+
+L’objectif est de cumuler **2 min 30 de vol** dans une météo douce. Le vent diminue ensuite progressivement pour préparer l’atterrissage, puis le joueur rejoint son planeur pour le récupérer. Un posé un peu ferme avec des dégâts légers est accepté à cette étape : un conseil bienveillant accompagne la validation du tutoriel. En cas de crash ou de perte de vue prolongée, le raccourci de récupération permet de réessayer en conservant le temps de vol accumulé. Les messages suivent les touches attribuées dans les réglages.
+
+Le Topy tolère mieux les atterrissages et le calcul des dégâts ne confond plus l’impulsion d’un rebond avec la vitesse d’arrivée au sol. Les réglages personnels de météo et de modèle sont restaurés en quittant le tutoriel.
+
+[![Le Topy et le nouvel accès TUTO dans le menu](reports/unreal_prototype/galerie/topy-accueil-tuto.png)](reports/unreal_prototype/galerie/topy-accueil-tuto.png)
+
 ![La prairie du lac](reports/unreal_prototype/vallee-3d-sol.jpg)
 
 ### Les planeurs
@@ -34,6 +46,7 @@ Le projet reste un prototype : les réglages physiques sont affinés par compara
 
 ## Fonctionnalités
 
+- Tutoriel interactif **Mon 1er vol**, au chalet avec le Topy, du déplacement à pied à la récupération après l’atterrissage.
 - Neuf appareils au hangar, du Snipe 2 de lancer main au Jonker JS-3 de 9 m. Le Flight-Composites Nubis de 5,95 m dispose de volets et d’aérofreins indépendants.
 - Radio USB (notamment TX16S), affectations personnalisées et pilotage clavier.
 - Masse, centrage avec silhouette interactive, force des commandes de −500 à +500 % par modèle.
@@ -78,7 +91,7 @@ Les petites marches jusqu'à **55 cm** se franchissent à la montée comme à la
 
 Les instruments de vol (boussole, vent, vario, cadran de traction et état des dégâts) sont affichés à **70 %** de leur taille précédente, avec les mêmes formes, couleurs et positions d'ancrage. Le bandeau des touches conserve sa taille.
 
-Le bandeau des touches et les astuces s’effacent progressivement : opacité de 20 % en vol, 40 % au sol ou en exploration, et 90 % pendant une interaction. Après une touche de fonction, un lancement ou une interaction avec le matériel, ils restent lisibles pendant 2,5 secondes avant de s’atténuer. Marcher, regarder et piloter ne réactivent pas le bandeau.
+Le bandeau des touches reprend les couleurs du menu et des instruments, avec des icônes et un rail continu. Le bandeau et les astuces s’effacent progressivement : opacité de **50 % au repos**, en vol comme au sol, et **90 % pendant une interaction**. Après une touche de fonction, un lancement ou une interaction avec le matériel, ils restent lisibles pendant 2,5 secondes avant de s’atténuer. Marcher, regarder et piloter ne réactivent pas le bandeau.
 
 La boussole reprend le cadran crème et les panneaux latéraux de la proposition « Instrument de vol », avec les polices du menu, des valeurs agrandies et un vario séparé. Les points cardinaux et les deux aiguilles de vent restent orientés selon la caméra. Le panneau d’instruments de diagnostic est masqué et conservé dans le code ; F1 sélectionne désormais le treuil.
 
