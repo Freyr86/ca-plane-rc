@@ -1,6 +1,7 @@
 {
   "model": "FEMO APUS 4",
   "schema": 1,
+  "separated_wing_flow": true,
   "impact_resistance": 1.4,
   "mass_kg": 0.85,
   "span_m": 1.35,

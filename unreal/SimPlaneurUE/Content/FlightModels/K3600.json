@@ -1,6 +1,7 @@
 {
   "model": "K3600",
   "schema": 1,
+  "separated_wing_flow": true,
   "impact_resistance": 1,
   "flaps": {"max_up_deg": 2, "max_down_deg": 80, "affected_wing_fraction": 0.42},
   "mass_kg": 1.6,

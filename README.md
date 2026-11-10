@@ -2,7 +2,21 @@
 
 Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++ natif à 120 Hz. Le simulateur fonctionne sans service JSBSim externe.
 
-**Bêta v0.5.7 : le premier tutoriel est disponible !** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.7).
+**Bêta v0.5.8 : centrage plus lisible, physique de vol retravaillée et mises à jour intégrées.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.8).
+
+## Nouveautés de la 0.5.8
+
+Le réglage du point d’équilibre gagne une **vue de profil** : le nez s’abaisse lorsque le centrage avance et se relève lorsqu’il recule. Ce repère explique le déplacement par rapport au réglage d’origine ; il ne prédit pas l’assiette en vol. Les boutons **Avancer · nez** et **Reculer · queue** permettent un réglage au millimètre.
+
+![Réglage du centrage avec vue de profil](docs/communaute/v0.5.8/centrage-reference.png)
+
+La physique commune aux planeurs prend mieux en compte le décrochage de chaque demi-aile, les fortes incidences et les mouvements de rotation. Le Fox reçoit un travail supplémentaire sur l’empennage, les départs en vrille et leur récupération. Le Topy garde un décrochage doux, avec abaissement du nez et reprise de vitesse. Le centrage et le vol dos ont également fait l’objet de comparaisons à vitesse identique. Les essais numériques ne remplacent pas la validation par les pilotes de chaque modèle réel.
+
+Trois niveaux de résistance sont disponibles : **Réaliste**, **Résistant** et **Indestructible**. Après un posé ou un choc, la caméra continue de suivre le planeur jusqu’à son immobilisation ; un déplacement volontaire du pilote permet de reprendre le regard libre.
+
+Les **mises à jour intégrées** sont accessibles dans les réglages : recherche automatique au démarrage, téléchargement à la demande, vérification du fichier, puis **Installer et redémarrer** lorsque le planeur est récupéré. Les réglages sont conservés. Les utilisateurs de la 0.5.7 ou d’une version antérieure doivent installer cette 0.5.8 manuellement une première fois pour disposer de cette fonction.
+
+[Captures et récapitulatif pour la communauté](docs/communaute/v0.5.8/README.md) · [Fonctionnement des mises à jour](docs/MISES_A_JOUR.md)
 
 ## Mon 1er vol
 
@@ -85,7 +99,7 @@ En quittant le noclip, le pilote est placé au sol. Avant le lancer, la souris o
 
 La marche avance à 5,5 m/s et la course avec Maj à 16,25 m/s, soit +150 % par rapport aux vitesses initiales. Les contrôles du sol et des obstacles sont effectués par petits pas pour conserver les collisions pendant la course.
 
-Pendant le vol, le déplacement est limité à **4,4 m/s**, soit 80 % de la marche normale, y compris avec Maj. Les mêmes contrôles du terrain, de l'eau et des obstacles s'appliquent. Les déplacements s'arrêtent dans le menu et pendant le lancer ou la chute après impact.
+Pendant le vol, le déplacement est limité à **4,4 m/s**, soit 80 % de la marche normale, y compris avec Maj. Les mêmes contrôles du terrain, de l'eau et des obstacles s'appliquent. Les déplacements s'arrêtent dans le menu et pendant le lancer. Après un impact, marcher libère le suivi automatique du regard.
 
 Les petites marches jusqu'à **55 cm** se franchissent à la montée comme à la descente, notamment au pied de l'escalier du chalet. Lorsqu'un rebord bloque le déplacement direct, le passage est vérifié en trois mouvements (montée, avance, descente), avec contrôle des collisions et de l'espace au-dessus du pilote. Les murs, plafonds trop bas et dénivelés plus importants restent bloquants.
 

@@ -93,6 +93,16 @@ struct FGliderDynamics
     bool IsStopped() const {return Stopped;}
 
 private:
+    friend class FFlightEnvelopeTest;
+    friend class FFlightDepartureTest;
+    FVector PolarForce(FVector Air, double Density, double AreaFraction) const;
+    void PolarCoefficients(double Alpha,double Speed,double& CL,double& CD) const;
+    void TailForces(FVector Air,FVector Rates,double Density,double Elevator,double Rudder,
+        double Efficiency,FVector& Force,FVector& Torque) const;
+    double TailArm=0.,HorizontalTailHeight=0.,VerticalTailHeight=0.;
+    bool SeparatedWingFlow=false;
+    double PostStallRollBlend=1., StalledTailEfficiency=.35;
+    double PositiveStallAngle=0., NegativeStallAngle=0.;
     struct FMoment
     {
         double Bias=0, Angle=0, Rate=0, Control=0;
@@ -106,6 +116,7 @@ private:
     double StandardMass = 0., CgShift = 0.;
     double ImpactResistance = 1.;
     int32 ReferenceCgMm = 0;
+    int32 ForwardCgTravelMm=10, AftCgTravelMm=10;
     FMoment Roll,Pitch,Yaw;
     double ExtraDownElevatorMoment = 0.;
     FGliderControlGains Gains;

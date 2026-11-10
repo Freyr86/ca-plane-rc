@@ -1,10 +1,16 @@
 {
   "model": "MDM-1 Fox 1:2",
   "schema": 1,
+  "separated_wing_flow": true,
   "impact_resistance": 1.15,
   "mass_kg": 24,
   "reference_cg_from_root_le_mm": 160,
   "conventional_tail": true,
+  "post_stall_tail": {
+    "arm_m": 2.0,
+    "horizontal_height_m": 0.15,
+    "vertical_height_m": 0.35
+  },
   "aileron_roll_coefficient": 0.115,
   "spoiler_drag_coefficient": 0.14,
   "inertia_diagonal_kg_m2": [

@@ -4,6 +4,7 @@
 #include "GameFramework/Pawn.h"
 #include "FlightRadio.h"
 #include "GliderDynamics.h"
+#include "LandingDamage.h"
 #include "WindTrails.h"
 #include "BungeeLaunch.h"
 #include "LaunchInstallations.h"
@@ -73,7 +74,7 @@ public:
     bool IsHeldForLaunch() const { return bHeldForLaunch; }
     bool UsesDiscusLaunch() const { return SelectedModel == 5; }
     bool IsThrowing() const { return ThrowSeconds >= 0.f; }
-    bool IsWalking() const { return !bGroundPhysics && (bHeldForLaunch || bInBackpack || Flight.IsStopped()) && !IsThrowing() && !bNoclip && !bMenuOpen; }
+    bool IsWalking() const { return (!bGroundPhysics || bLandingLookReleased) && (bHeldForLaunch || bInBackpack || Flight.IsStopped()) && !IsThrowing() && !bNoclip && !bMenuOpen; }
     bool InBackpack() const { return bInBackpack; }
     bool CanWalkInFlight() const { return !bMenuOpen && !bNoclip && !bHeldForLaunch && !IsThrowing() && !Flight.IsStopped() && !bGroundPhysics; }
     const FBungeeLaunch& BungeeStatus() const { return Bungee; }
@@ -358,14 +359,20 @@ private:
     void BuildFallbackTopy();
     void BuildWingSection();
     void ResetFlight();
-    void StopFlightAt(const FTransform& Contact);
+    void StopFlightAt(const FTransform& Contact,bool PreserveView=false);
+    void LookAtAircraftFromPilot(const FTransform& Pose);
 public:
     int32 DamageLevel() const { return ImpactDamage; }
+    EAircraftResistance ResistanceMode() const { return Resistance; }
+    void SetResistanceMode(EAircraftResistance Mode);
     bool IsSettling() const { return bGroundPhysics; }
 private:
     UPROPERTY() TObjectPtr<UProceduralMeshComponent> LandingBody;
     int32 ImpactDamage=0;
+    EAircraftResistance Resistance=EAircraftResistance::Realistic;
     bool bGroundPhysics=false, bLandingPaused=false;
+    bool bLandingLookReleased=false;
+    bool CanWalkAfterContact() const { return bGroundPhysics && !bMenuOpen && !bNoclip && !bHeldForLaunch && !IsThrowing(); }
     FVector LandingVelocity=FVector::ZeroVector, LandingAngular=FVector::ZeroVector;
     void BeginGroundPhysics(const FTransform& Pose,const FHitResult& Hit,double Length,double Span,double Rise,double Sweep,FVector4 Wheel);
     void UpdateGroundPhysics(float Dt);

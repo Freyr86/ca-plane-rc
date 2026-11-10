@@ -2,10 +2,18 @@
 #include "LandingDamage.h"
 #include "ProceduralMeshComponent.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Misc/ConfigCacheIni.h"
+
+void ASlopeFlightPawn::SetResistanceMode(EAircraftResistance Mode)
+{
+    Resistance=static_cast<EAircraftResistance>(FMath::Clamp(static_cast<int32>(Mode),0,2));
+    GConfig->SetInt(TEXT("SimPlaneur.Physics"),TEXT("ResistanceMode"),static_cast<int32>(Resistance),GGameUserSettingsIni);
+    GConfig->Flush(false,GGameUserSettingsIni);
+}
 
 void ASlopeFlightPawn::ClearGroundPhysics()
 {
-    bGroundPhysics=false; bLandingPaused=false; ImpactDamage=0;
+    bGroundPhysics=false; bLandingPaused=false; bLandingLookReleased=false; ImpactDamage=0;
     LandingBody->SetSimulatePhysics(false);
     LandingBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     LandingBody->AttachToComponent(SceneRoot,FAttachmentTransformRules::KeepWorldTransform);
@@ -19,8 +27,9 @@ void ASlopeFlightPawn::BeginGroundPhysics(const FTransform& Pose,const FHitResul
     LandingAngular=Flight.AngularVelocityWorld();
     const double ImpactSpeed=LandingContactSpeed(LandingVelocity,LandingAngular,Hit.ImpactPoint-Pose.GetLocation(),Hit.ImpactNormal);
     ImpactDamage=LandingDamage(ImpactSpeed/Flight.ImpactTolerance(),ContactKind==TEXT("water"),ContactKind!=TEXT("ground"),
-        Pose.GetRotation().GetUpVector().Z<.3);
-    StopFlightAt(Pose); // Disable aerodynamic control; Chaos now owns motion.
+        Pose.GetRotation().GetUpVector().Z<.3,Resistance);
+    StopFlightAt(Pose,true); // Disable aerodynamics; keep following Chaos motion.
+    bLandingLookReleased=false;
     bGroundPhysics=true;
     LandingBody->ClearCollisionConvexMeshes();
     TArray<TArray<FVector>> Hulls;
@@ -68,7 +77,8 @@ void ASlopeFlightPawn::LandingHit(UPrimitiveComponent*,AActor*,UPrimitiveCompone
     // impulses. Use the pre-physics approach velocity, as at first touchdown.
     const double ImpactSpeed=LandingContactSpeed(LandingVelocity,LandingAngular,
         Hit.ImpactPoint-LandingBody->GetCenterOfMass(),Hit.ImpactNormal);
-    const int32 NewDamage=LandingDamage(ImpactSpeed/Flight.ImpactTolerance(),Other && Other->ComponentHasTag(TEXT("water")));
+    const int32 NewDamage=LandingDamage(ImpactSpeed/Flight.ImpactTolerance(),Other && Other->ComponentHasTag(TEXT("water")),
+        false,false,Resistance);
     if(NewDamage>ImpactDamage)
         UE_LOG(LogTemp,Display,TEXT("LANDING_IMPACT approach=%.3f impulse_delta=%.3f damage=%d component=%s"),
             ImpactSpeed,Impulse.Size()/FMath::Max(.05,Flight.Loading().MassGrams*.001)*.01,NewDamage,*GetNameSafe(Other));
@@ -113,6 +123,9 @@ void ASlopeFlightPawn::UpdateGroundPhysics(float)
         bGroundPhysics=false;
         LandingBody->SetSimulatePhysics(false);
         LandingBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        StopFlightAt(Pose);
+        // Only release the camera once Chaos has actually put the body to
+        // sleep. A pilot who already chose to walk keeps their manual view.
+        StopFlightAt(Pose,bLandingLookReleased);
+        bLandingLookReleased=false;
     }
 }

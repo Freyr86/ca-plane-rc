@@ -2,7 +2,7 @@
   #error GameDir must point to the packaged Windows directory
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.7"
+  #define AppVersion "0.5.8"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\work\release"
@@ -46,4 +46,11 @@ Name: "{group}\Ça plane !"; Filename: "{app}\SimPlaneurUE.exe"; WorkingDir: "{a
 Name: "{autodesktop}\Ça plane !"; Filename: "{app}\SimPlaneurUE.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\SimPlaneurUE.exe"; Description: "Lancer Ça plane !"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\SimPlaneurUE.exe"; Description: "Lancer Ça plane !"; Flags: nowait postinstall skipifsilent; Check: not ShouldRestartGame
+Filename: "{app}\SimPlaneurUE.exe"; Flags: nowait; Check: ShouldRestartGame
+
+[Code]
+function ShouldRestartGame: Boolean;
+begin
+  Result := ExpandConstant('{param:RESTARTGAME|0}') = '1';
+end;

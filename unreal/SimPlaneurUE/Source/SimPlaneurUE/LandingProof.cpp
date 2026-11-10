@@ -1,6 +1,7 @@
 #include "SlopeFlightPawn.h"
 #include "Airfield.h"
 #include "ProceduralMeshComponent.h"
+#include "Camera/CameraTypes.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 
@@ -9,6 +10,25 @@ void ASlopeFlightPawn::TestLanding(float Elapsed)
 #if !UE_BUILD_SHIPPING
     if(!bAppearanceReady || Elapsed<5.+MenuProofStep*3.) return;
     bool OK=true;
+    auto StartCameraContact=[&](EFlightView View)
+    {
+        ResetFlight(); bHeldForLaunch=false; bInspectMeadow=false;
+        FlightView=EFlightView::Ground;
+        while(FlightView!=View) CycleCamera();
+        const FVector P=MenuProofLocation+FVector(1200,900,3000);
+        Flight.LaunchFrom(FTransform(FRotator(0,135,15),P),FVector(3,0,-1));
+        FHitResult Hit; Hit.ImpactNormal=FVector(-1,0,0); Hit.ImpactPoint=P;
+        ContactKind=TEXT("tree");
+        BeginGroundPhysics(Flight.WorldPose(),Hit,86,119,7.5/59.5,0,FVector4(0,0,0,0));
+        UpdateGroundPhysics(0.f);
+    };
+    auto SleepContact=[&]
+    {
+        LandingBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        LandingBody->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+        LandingBody->PutAllRigidBodiesToSleep();
+        UpdateGroundPhysics(0.f);
+    };
     switch(MenuProofStep)
     {
     case 0:
@@ -97,6 +117,66 @@ void ASlopeFlightPawn::TestLanding(float Elapsed)
     case 16:
         OK=ImpactDamage==0 && !bGroundPhysics;
         break;
+    case 17:
+    {
+        // Contact ends the aerodynamic flight, but does not end the physical
+        // motion. Both chase cameras must stay with the moving body.
+        for(const EFlightView View : {EFlightView::Chase,EFlightView::Wide})
+        {
+            StartCameraContact(View);
+            FMinimalViewInfo CameraAtContact; CalcCamera(0.f,CameraAtContact);
+            OK &= bGroundPhysics && !IsWalking() && FlightView==View
+                && FVector::Distance(CameraAtContact.Location,PilotPosition())>500.;
+            bMenuOpen=true; UpdateGroundPhysics(0.f);
+            OK &= !LandingBody->IsSimulatingPhysics() && FlightView==View && !bLandingLookReleased;
+            bMenuOpen=false; UpdateGroundPhysics(0.f);
+            OK &= LandingBody->IsSimulatingPhysics() && FlightView==View && !bLandingLookReleased;
+            SleepContact();
+            FMinimalViewInfo AtRest; CalcCamera(0.f,AtRest);
+            OK &= !bGroundPhysics && IsWalking() && FlightView==EFlightView::Ground
+                && AtRest.Location.Equals(PilotPosition()+FVector(0,0,170),.01);
+        }
+        break;
+    }
+    case 18:
+    {
+        StartCameraContact(EFlightView::Ground);
+        FMinimalViewInfo Before,After; CalcCamera(0.f,Before);
+        LandingBody->SetWorldLocation(LandingBody->GetComponentLocation()+FVector(-700,1000,-500));
+        UpdateGroundPhysics(0.f); CalcCamera(0.f,After);
+        FRotator Expected=(GetActorLocation()-After.Location).Rotation();
+        Expected.Pitch=FMath::Max(-89.f,Expected.Pitch-7.f);
+        OK=bGroundPhysics && !IsWalking() && !bLandingLookReleased
+            && After.Rotation.Equals(Expected,.01) && !After.Rotation.Equals(Before.Rotation,1.);
+        // No input, menu input and noclip input cannot silently release gaze.
+        MovePilot(FVector::ZeroVector,.05f,false);
+        bMenuOpen=true; MovePilot(FVector::ForwardVector,.05f,false); bMenuOpen=false;
+        bNoclip=true; MovePilot(FVector::ForwardVector,.05f,false); bNoclip=false;
+        OK &= !bLandingLookReleased;
+        const FVector PreviousPilot=PilotPosition();
+        MovePilot(FVector::ForwardVector,.05f,false);
+        OK &= bLandingLookReleased && bGroundPhysics && IsWalking() && FlightView==EFlightView::Ground
+            && FVector::Distance(PreviousPilot,PilotPosition())>1.;
+        FMinimalViewInfo Manual; CalcCamera(0.f,Manual);
+        LandingBody->SetWorldLocation(LandingBody->GetComponentLocation()+FVector(500,-1100,-400));
+        UpdateGroundPhysics(0.f); CalcCamera(0.f,After);
+        OK &= After.Rotation.Equals(Manual.Rotation,.01);
+        SleepContact(); CalcCamera(0.f,After);
+        OK &= !bGroundPhysics && !bLandingLookReleased && IsWalking()
+            && After.Rotation.Equals(Manual.Rotation,.01);
+        break;
+    }
+    case 19:
+    {
+        // A step also overrides chase view; reset must discard that override
+        // while the body is still moving, not just after normal settlement.
+        StartCameraContact(EFlightView::Chase);
+        MovePilot(FVector::ForwardVector,.05f,false);
+        OK=bLandingLookReleased && bGroundPhysics && FlightView==EFlightView::Ground;
+        ResetFlight();
+        OK &= !bLandingLookReleased && !bGroundPhysics && !LandingBody->IsSimulatingPhysics();
+        break;
+    }
     default:
         UE_LOG(LogTemp,Display,TEXT("LANDING_PROOF complete"));
         FPlatformMisc::RequestExitWithStatus(false,0);return;

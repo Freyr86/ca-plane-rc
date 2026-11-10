@@ -36,7 +36,7 @@ bool FValleyAirTest::RunTest(const FString&)
     TestTrue(TEXT("Updraft at right wingtip raises the right wing"), Thermal.WorldPose().Rotator().Roll < -.1);
 
     Thermal.Reset();
-    double PeakLift = 0., PeakGain = 0., BestClimb = 0.;
+    double PeakLift = 0., PeakGain = 0., BestClimb = 0., PeakIncidence = 0.;
     for (int32 I = 0; I < 120 * 14; ++I)
     {
         const double Time = I * Thermal.TimeStep;
@@ -49,8 +49,11 @@ bool FValleyAirTest::RunTest(const FString&)
         HorizontalOnly.Step(0,0);
         PeakGain = FMath::Max(PeakGain, Thermal.Altitude() - HorizontalOnly.Altitude());
         BestClimb = FMath::Max(BestClimb, -Thermal.SinkRate());
+        const FVector Flow=Thermal.RelativeFlowNED();
+        const FVector Air=Thermal.WorldPose().GetRotation().UnrotateVector(FVector(-Flow.X,-Flow.Y,Flow.Z));
+        PeakIncidence=FMath::Max(PeakIncidence,FMath::RadiansToDegrees(FMath::Atan2(-Air.Z,Air.X)));
     }
-    UE_LOG(LogTemp, Display, TEXT("VALLEY_AIR free flight peak_lift=%.2f m/s peak_height_gain=%.2f m best_climb=%.2f m/s"), PeakLift, PeakGain, BestClimb);
+    UE_LOG(LogTemp, Display, TEXT("VALLEY_AIR free flight peak_lift=%.2f m/s peak_height_gain=%.2f m best_climb=%.2f m/s peak_incidence=%.2f deg"), PeakLift, PeakGain, BestClimb, PeakIncidence);
     TestTrue(TEXT("Rising air is reachable from launch"), PeakLift > .8);
     TestTrue(TEXT("Topy gains height versus the horizontal-wind run"), PeakGain > 1.);
     const FVector Surface(65, 10, -ValleyAir::SurfaceAltitude(65,10));

@@ -106,6 +106,25 @@ La V1 ne sera pas déclarée fiable pour :
 
 L'interface devra afficher **hors domaine validé** plutôt que masquer cette limite.
 
+### 5.1 Priorité exprimée le 10 novembre 2026 : comportement réel hors enveloppe normale
+
+L’objectif demandé dépasse la V1 : retrouver les comportements propres à chaque planeur au décrochage, en départ dissymétrique, en autorotation, en vrille et lors de la récupération. Le comportement doit découler des efforts aérodynamiques et des inerties. La stabilité numérique et la présence d’une rotation ne suffisent pas à valider le réalisme.
+
+Le moteur Unreal calcule séparément deux demi-ailes et étend désormais les polaires sur 360° avec un raccord continu vers une approximation de plaque plane. Le Fox remplace progressivement ses dérivées de tangage/lacet après décrochage par des efforts locaux d’empennage et de dérive, incluant la vitesse de rotation. Les contributions remplacées sont retirées du calcul global. Les tests `SimPlaneur.Physics.PostStallPolar` et `SimPlaneur.Physics.FlightDeparture` vérifient continuité, dissipation, autorité à forte incidence, entrée par commandes seules en vrille oscillatoire avec phases aplaties, puis récupération. Ce sont des validations numériques d’un modèle estimé ; elles ne démontrent pas sa fidélité à un Fox réel identifié. Le diagnostic `SimPlaneur.Physics.FoxSpinDiagnostics` conserve aussi les cas qui deviennent des spirales ou ne restent pas aplatis.
+
+Les étapes techniques et leur état sont :
+
+1. Extension continue des polaires réalisée pour les neuf modèles. Les coefficients extrapolés restent estimés ; leur calibration et la signalisation du domaine de confiance restent à compléter.
+2. Décrire les portions d’aile, leur vrillage, leur dièdre et leurs gouvernes ; calculer l’écoulement local en tenant compte de la rotation et des rafales.
+3. Calcul local d’empennage horizontal et de dérive réalisé pour le Fox, avec sillage simplifié et retrait des contributions globales remplacées. La modélisation séparée du fuselage et les autres configurations d’empennage restent à développer.
+4. Représenter et identifier les moments et amortissements à grande incidence. Les coefficients du vol normal ne constituent pas une extrapolation validée.
+5. Vérifier les entrées et sorties à plusieurs centrages, masses et commandes. Distinguer abattée symétrique, départ d’aile, rotation transitoire, spirale, vrille entretenue et vrille aplatie. Mesurer incidence, assiette, axe et vitesse de rotation, vitesse de chute et délai de récupération sur plusieurs tours.
+6. Comparer chaque modèle aux références disponibles et conserver l’incertitude quand une donnée manque. Une description de pilote est une contrainte qualitative ; une mesure de vol peut identifier des paramètres. La généralisation aux autres planeurs reste conditionnée à ces vérifications.
+
+Pour le Topy, la référence qualitative donnée par son propriétaire est une difficulté à décrocher, une abattée suivie d’une reprise de vitesse et un louvoiement gauche/droite avec retour à la stabilité. Le louvoiement précis n’a pas encore été validé. Pour le Fox, le fabricant et la version réelle cités par le pilote sont inconnus ; le modèle numérique de 7 m et 24 kg reste une référence générique. Les paramètres géométriques, les débattements et les inerties nécessaires doivent être documentés ou marqués comme estimations.
+
+Références méthodologiques : les travaux [NASA sur le vol après décrochage et les vrilles](https://ntrs.nasa.gov/api/citations/20070005804/downloads/20070005804.pdf) combinent données statiques et dynamiques et soulignent le besoin de validation. Les [essais FASER sur un petit appareil télépiloté](https://ntrs.nasa.gov/citations/20160010112) montrent aussi qu’une recherche d’équilibre peut ne trouver aucune vrille pour la configuration étudiée. Ces méthodes orientent le développement ; leurs coefficients ne sont pas ceux de nos planeurs.
+
 ## 6. Sol et lancement
 
 Inclus en V1 :

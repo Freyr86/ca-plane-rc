@@ -293,6 +293,9 @@ void ASlopeFlightPawn::BeginPlay()
     PrepareFlightAudio();
     LoadBungee();
     F3FCircuit.Load(GGameUserSettingsIni);
+    int32 SavedResistance=0;
+    GConfig->GetInt(TEXT("SimPlaneur.Physics"),TEXT("ResistanceMode"),SavedResistance,GGameUserSettingsIni);
+    Resistance=static_cast<EAircraftResistance>(FMath::Clamp(SavedResistance,0,2));
     GConfig->GetBool(TEXT("SimPlaneur.Graphics"),TEXT("ShowTrails"),bShowWindTrails,GGameUserSettingsIni);
     GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("TrailDistance"),TrailDistance,GGameUserSettingsIni);
     TrailDistance=FMath::Clamp(TrailDistance,20,500);
@@ -524,6 +527,7 @@ const TCHAR* ASlopeFlightPawn::FlightCameraName() const
 void ASlopeFlightPawn::CycleCamera()
 {
     bInspectMeadow = false;
+    if (bGroundPhysics) bLandingLookReleased=false;
     switch (FlightView)
     {
     case EFlightView::Ground: FlightView = EFlightView::Chase; break;
@@ -584,7 +588,7 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
     }
     else
     {
-        if (IsWalking() || CanWalkInFlight()) MoveWalking(DeltaSeconds);
+        if (IsWalking() || CanWalkInFlight() || CanWalkAfterContact()) MoveWalking(DeltaSeconds);
         if (Radio.Pressed(A::HandLaunch)) BeginHandLaunch();
     }
     // The diagnostic instrument panel is retained for development, without a player shortcut.
@@ -683,10 +687,10 @@ bool ASlopeFlightPawn::PlacePilotFromNoclip()
 
 void ASlopeFlightPawn::MoveWalking(float DeltaSeconds)
 {
-    if (!IsWalking() && !CanWalkInFlight()) return;
+    if (!IsWalking() && !CanWalkInFlight() && !CanWalkAfterContact()) return;
     auto* PC=CastChecked<APlayerController>(GetController());
     float Heading=LaunchHeading;
-    if(CanWalkInFlight())
+    if(CanWalkInFlight() || (CanWalkAfterContact() && !bLandingLookReleased))
     {
         // Keep automatic tracking and move relative to the camera's horizontal
         // bearing, including when the aircraft is high overhead.
@@ -712,8 +716,15 @@ void ASlopeFlightPawn::MoveWalking(float DeltaSeconds)
 
 void ASlopeFlightPawn::MovePilot(const FVector& Direction,float DeltaSeconds,bool Sprint)
 {
-    if(!IsWalking() && !CanWalkInFlight()) return;
+    if(!IsWalking() && !CanWalkInFlight() && !CanWalkAfterContact()) return;
     if (Direction.IsNearlyZero()) return;
+    if (CanWalkAfterContact() && !bLandingLookReleased)
+    {
+        // A voluntary step takes control away from automatic tracking, even
+        // if an obstacle prevents the requested step from being completed.
+        LookAtAircraftFromPilot(GetActorTransform());
+        bLandingLookReleased=true;
+    }
     const float Speed=PilotMovement::Speed(CanWalkInFlight(),Sprint);
     const FVector Movement=Direction.GetClampedToMaxSize(1.)*(Speed*FMath::Clamp(DeltaSeconds,0.f,.05f));
     // Short collision steps preserve slope/step checks at the faster sprint speed.
@@ -1046,16 +1057,21 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
     SetActorTransform(Display);
 }
 
-void ASlopeFlightPawn::StopFlightAt(const FTransform& Contact)
+void ASlopeFlightPawn::StopFlightAt(const FTransform& Contact,bool PreserveView)
 {
     Bungee.Release();
     Flight.StopAt(Contact);
     PreviousPose = Contact;
     TimeBank = 0.;
+    if (!PreserveView) LookAtAircraftFromPilot(Contact);
+}
+
+void ASlopeFlightPawn::LookAtAircraftFromPilot(const FTransform& Pose)
+{
     FlightView = EFlightView::Ground;
     // Walking resumes looking at the aircraft where it landed, preserving the
     // ground camera bearing instead of restoring the old take-off direction.
-    const FRotator Look = (Contact.GetLocation()-PilotPosition()-FVector(0,0,170)).Rotation();
+    const FRotator Look = (Pose.GetLocation()-PilotPosition()-FVector(0,0,170)).Rotation();
     LaunchHeading = Look.Yaw;
     WalkPitch = FMath::Clamp(Look.Pitch-7.f,-80.f,80.f);
 }

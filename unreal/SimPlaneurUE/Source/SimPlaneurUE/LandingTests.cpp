@@ -19,6 +19,9 @@ bool FLandingDamageTest::RunTest(const FString&)
     TestEqual(TEXT("Tree strike can damage at lower speed"),LandingDamage(2.,false,true),1);
     TestEqual(TEXT("Inverted ground contact damages"),LandingDamage(.5,false,false,true),1);
     TestEqual(TEXT("Water landing is crash"),LandingDamage(.1,true),2);
+    TestEqual(TEXT("Resistant tolerates a firm arrival"),LandingDamage(4.,false,false,false,EAircraftResistance::Resistant),0);
+    TestEqual(TEXT("Resistant still crashes on a violent impact"),LandingDamage(13.,false,false,false,EAircraftResistance::Resistant),2);
+    TestEqual(TEXT("Indestructible survives ground and water"),LandingDamage(100.,true,true,true,EAircraftResistance::Indestructible),0);
     FGliderDynamics Topy,Apus;
     if(!TestTrue(TEXT("Load Topy resistance"),Topy.LoadModel(Topy.TopyModelPath())) ||
        !TestTrue(TEXT("Load APUS resistance"),Apus.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/Apus4.json")))) return false;

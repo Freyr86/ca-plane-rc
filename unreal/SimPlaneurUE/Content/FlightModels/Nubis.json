@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "separated_wing_flow": true,
   "impact_resistance": 1.1,
   "model": "Flight-Composites Nubis 5,95 m",
   "mass_kg": 9.0,

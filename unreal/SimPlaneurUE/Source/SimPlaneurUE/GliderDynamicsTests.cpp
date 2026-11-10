@@ -279,6 +279,187 @@ bool FHandLaunchTest::RunTest(const FString&)
     return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVjxLoadingTest, "SimPlaneur.Physics.VjxLoading",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FVjxLoadingTest::RunTest(const FString&)
+{
+    FGliderDynamics Reference;
+    if (!TestTrue(TEXT("Load VJX for CG comparison"), Reference.LoadModel(
+        FPaths::ProjectContentDir()/TEXT("FlightModels/VJX2022.json")))) return false;
+    const auto Standard = Reference.StandardLoading();
+    double PreviousPitch = -90.;
+    for (const int32 Offset : {-10, -5, 0, 5, 10})
+    {
+        FGliderDynamics Model = Reference;
+        Model.SetLoading({Standard.MassGrams, Standard.CgMm + Offset});
+        Model.Reset(FVector::ZeroVector);
+        Model.LaunchFrom(FTransform(FRotator(3.5,0,0),FVector(0,0,100000)),FVector(15,0,0));
+        for (int32 I = 0; I < 60; ++I) Model.Step(0,0,0);
+        const double InitialPitch = Model.WorldPose().Rotator().Pitch;
+        TestTrue(TEXT("Moving CG aft increases initial nose-up response"), InitialPitch > PreviousPitch);
+        PreviousPitch = InitialPitch;
+        for (int32 I = 60; I < 3600; ++I) Model.Step(0,0,0);
+        TestFalse(TEXT("CG sweep remains finite"), Model.WorldPose().ContainsNaN());
+        TestEqual(TEXT("CG retained during flight"), Model.Loading().CgMm, Standard.CgMm + Offset);
+        UE_LOG(LogTemp,Display,TEXT("VJX_CG cg_mm=%d pitch_at_0_5s=%.3f speed_at_30s=%.3f sink_at_30s=%.3f pitch_at_30s=%.3f"),
+            Model.Loading().CgMm,InitialPitch,Model.Airspeed(),Model.SinkRate(),Model.WorldPose().Rotator().Pitch);
+    }
+    return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightEnvelopeTest,"SimPlaneur.Physics.FlightEnvelope",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFlightEnvelopeTest::RunTest(const FString&)
+{
+    FGliderDynamics Fox, Vjx;
+    const FString Models=FPaths::ProjectContentDir()/TEXT("FlightModels");
+    if (!TestTrue(TEXT("Load Fox envelope"),Fox.LoadModel(Models/TEXT("Fox7m.json"))) ||
+        !TestTrue(TEXT("Load VJX envelope"),Vjx.LoadModel(Models/TEXT("VJX2022.json")))) return false;
+    Fox.SetWind(FVector::ZeroVector);
+    Vjx.SetWind(FVector::ZeroVector);
+    auto Forces=[](const FGliderDynamics& Model,double Alpha,double Elevator,FVector Rates=FVector::ZeroVector,bool Inverted=false)
+    {
+        const FQuat Attitude=FQuat(FVector(0,1,0),Inverted?-Alpha:Alpha)*FQuat(FVector(1,0,0),Inverted?PI:0.);
+        FVector Linear,Angular;
+        Model.Accelerations(Attitude,FVector(20,0,0),Rates,100.,Elevator,0.,0.,0.,Linear,Angular);
+        return TPair<FVector,FVector>(Linear,Angular);
+    };
+    const auto Symmetric=Forces(Fox,FMath::DegreesToRadians(20.),-1.);
+    for (const TCHAR* Name : {TEXT("Topy4522"),TEXT("K3600"),TEXT("VJX2022"),TEXT("Fox7m"),TEXT("JS3_9m"),
+        TEXT("Snipe2"),TEXT("LongBowMk2"),TEXT("Apus4"),TEXT("Nubis")})
+    {
+        FGliderDynamics Model;
+        if (!TestTrue(TEXT("Load fleet envelope"),Model.LoadModel(Models/(FString(Name)+TEXT(".json"))))) return false;
+        Model.SetWind(FVector::ZeroVector);
+        TestTrue(TEXT("Fleet enables separated flow"),Model.SeparatedWingFlow);
+        FGliderDynamics Legacy=Model;
+        Legacy.SeparatedWingFlow=false;
+        const auto Attached=Forces(Model,0.,.2,FVector(.1,.1,.1));
+        const auto Baseline=Forces(Legacy,0.,.2,FVector(.1,.1,.1));
+        TestTrue(TEXT("Attached-flight response is preserved"),Attached.Key.Equals(Baseline.Key,1.e-9) && Attached.Value.Equals(Baseline.Value,1.e-9));
+        for (const int32 Sign : {-1,1})
+        {
+            const double Stall=Sign>0 ? Model.PositiveStallAngle : Model.NegativeStallAngle;
+            const double Alpha=Sign*(Stall+FMath::DegreesToRadians(5.));
+            const auto StallSymmetric=Forces(Model,Alpha,0.);
+            const auto StallRolling=Forces(Model,Alpha,0.,FVector(.15,0,0));
+            TestTrue(TEXT("Symmetric stall preserves lateral symmetry"),FMath::Abs(StallSymmetric.Value.X)<1.e-9);
+            if (FString(Name)==TEXT("Topy4522"))
+                TestTrue(TEXT("Topy retains roll damping beyond the lift peak"),StallRolling.Value.X<0.);
+            else
+                TestTrue(TEXT("Both stall signs allow a wing-drop instability"),StallRolling.Value.X>0.);
+            Model.LaunchFrom(FTransform(FRotator(FMath::RadiansToDegrees(Alpha),0,0),FVector(0,0,100000)),FVector(14,0,0));
+            for (int32 I=0;I<1200;++I)
+            {
+                Model.Step(I<480 ? -Sign*.8 : 0.,I<480 ? .6 : 0.,0.);
+                if (Model.WorldPose().ContainsNaN() || !FMath::IsFinite(Model.Airspeed()))
+                {
+                    AddError(FString::Printf(TEXT("%s stall/recovery diverged, sign %d"),Name,Sign));
+                    return false;
+                }
+            }
+        }
+        UE_LOG(LogTemp,Display,TEXT("FLEET_ENVELOPE %s positive_stall_deg=%.2f negative_stall_deg=%.2f"),
+            Name,FMath::RadiansToDegrees(Model.PositiveStallAngle),FMath::RadiansToDegrees(Model.NegativeStallAngle));
+    }
+    FGliderDynamics Topy;
+    if (!TestTrue(TEXT("Load Topy gentle stall"),Topy.LoadModel(Models/TEXT("Topy4522.json")))) return false;
+    Topy.SetWind(FVector::ZeroVector);
+    for (const int32 Direction : {-1,1})
+    {
+        FGliderDynamics Recovery=Topy;
+        Recovery.LaunchFrom(FTransform(FRotator(20,0,Direction*10.),FVector(0,0,100000)),FVector(4.5,0,0));
+        double LowestPitch=20.,Fastest=4.5,LargestBank=10.,PreviousBank=Direction*10.;
+        int32 BankCrossings=0;
+        for (int32 I=0;I<960;++I)
+        {
+            Recovery.Step(-1.,0.,0.);
+            const auto Pose=Recovery.WorldPose().Rotator();
+            LowestPitch=FMath::Min(LowestPitch,Pose.Pitch);
+            Fastest=FMath::Max(Fastest,Recovery.Airspeed());
+            LargestBank=FMath::Max(LargestBank,FMath::Abs(Pose.Roll));
+            if (Pose.Roll*PreviousBank<0.) ++BankCrossings;
+            PreviousBank=Pose.Roll;
+        }
+        UE_LOG(LogTemp,Display,TEXT("TOPY_STALL direction=%d min_pitch=%.3f max_speed=%.3f max_bank=%.3f final_bank=%.3f bank_crossings=%d rates=%s"),
+            Direction,LowestPitch,Fastest,LargestBank,Recovery.WorldPose().Rotator().Roll,BankCrossings,*Recovery.Omega.ToString());
+        TestFalse(TEXT("Topy stalled recovery remains finite"),Recovery.WorldPose().ContainsNaN());
+        TestTrue(TEXT("Topy lowers the nose and regains speed despite held up elevator"),LowestPitch<0. && Fastest>5.);
+        TestTrue(TEXT("Topy wing rocking stays bounded without a spin"),LargestBank<45. && FMath::Abs(Recovery.Omega.Z)<.2);
+    }
+    TestTrue(TEXT("Symmetric stall has no artificial wing drop"),FMath::Abs(Symmetric.Value.X)<1.e-9);
+    const auto Dropping=Forces(Fox,FMath::DegreesToRadians(20.),-1.,FVector(.15,0,0));
+    const auto Opposite=Forces(Fox,FMath::DegreesToRadians(20.),-1.,FVector(-.15,0,0));
+    TestTrue(TEXT("Post-stall descending wing drives autorotation"),Dropping.Value.X>0. && Opposite.Value.X<0.);
+    TestTrue(TEXT("Attached wing damps a roll perturbation"),Forces(Fox,FMath::DegreesToRadians(5.),0.,FVector(.15,0,0)).Value.X<0.);
+    auto PitchAuthority=[&](double Degrees) {
+        const double Alpha=FMath::DegreesToRadians(Degrees);
+        return FMath::Abs(Forces(Fox,Alpha,1.).Value.Y-Forces(Fox,Alpha,0.).Value.Y);
+    };
+    TestTrue(TEXT("Fox tail authority falls in separated flow"),PitchAuthority(35.)<.5*PitchAuthority(5.));
+    const auto WingForce=[&](double Degrees) {
+        const double Alpha=FMath::DegreesToRadians(Degrees);
+        return Fox.PolarForce(FVector(20*FMath::Cos(Alpha),0,20*FMath::Sin(Alpha)),1.225,1.);
+    };
+    TestTrue(TEXT("Fox lift falls after the stall peak"),FMath::Abs(WingForce(26.).Z)<FMath::Abs(WingForce(15.).Z));
+    for (int32 Direction : {-1,1})
+    {
+        FGliderDynamics Spin=Fox;
+        Spin.LaunchFrom(FTransform(FRotator(19,0,0),FVector(0,0,100000)),FVector(14,0,0));
+        double MaxRollRate=0.,MaxYawRate=0.;
+        for (int32 I=0;I<960;++I)
+        {
+            Spin.Step(-1.,Direction*.8,0.);
+            MaxRollRate=FMath::Max(MaxRollRate,FMath::Abs(Spin.Omega.X));
+            MaxYawRate=FMath::Max(MaxYawRate,FMath::Abs(Spin.Omega.Z));
+            if (Spin.WorldPose().ContainsNaN()) return TestTrue(TEXT("Spin remains finite"),false);
+        }
+        UE_LOG(LogTemp,Display,TEXT("FOX_SPIN direction=%d peak_p=%.3f peak_r=%.3f final_rates=%s speed=%.3f loss=%.3f"),
+            Direction,MaxRollRate,MaxYawRate,*Spin.Omega.ToString(),Spin.Airspeed(),1000.-Spin.Altitude());
+        TestTrue(TEXT("Stalled rudder entry develops roll and yaw"),MaxRollRate>.3 && MaxYawRate>.2);
+        for (int32 I=0;I<1200;++I) Spin.Step(0.,0.,0.);
+        TestFalse(TEXT("Release of stalled controls remains finite"),Spin.WorldPose().ContainsNaN());
+        UE_LOG(LogTemp,Display,TEXT("FOX_RECOVERY rates=%s speed=%.3f"),*Spin.Omega.ToString(),Spin.Airspeed());
+        TestTrue(TEXT("Releasing stalled controls damps autorotation"),FMath::Abs(Spin.Omega.X)<.1 && FMath::Abs(Spin.Omega.Z)<.1);
+    }
+    for (const int32 Cg : {88,98,108,126,128})
+    {
+        Vjx.SetLoading({2730,Cg});
+        TestEqual(TEXT("Extended CG is applied"),Vjx.Loading().CgMm,Cg);
+        for (const bool Inverted : {false,true})
+        {
+            // Solve force and pitching-moment balance at the same speed.
+            auto Trim=[&](double Alpha) {
+                double Low=-1.,High=1.;
+                for (int32 I=0;I<45;++I)
+                {
+                    const double Mid=(Low+High)*.5;
+                    if (Forces(Vjx,Alpha,Mid,FVector::ZeroVector,Inverted).Value.Y>0.) Low=Mid; else High=Mid;
+                }
+                return (Low+High)*.5;
+            };
+            double Low=FMath::DegreesToRadians(-10.),High=FMath::DegreesToRadians(10.);
+            for (int32 I=0;I<45;++I)
+            {
+                const double Alpha=(Low+High)*.5;
+                const double Vertical=Forces(Vjx,Alpha,Trim(Alpha),FVector::ZeroVector,Inverted).Key.Z;
+                if (Inverted ? Vertical<0. : Vertical>0.) Low=Alpha; else High=Alpha;
+            }
+            const double Alpha=(Low+High)*.5, Elevator=Trim(Alpha);
+            const auto Equilibrium=Forces(Vjx,Alpha,Elevator,FVector::ZeroVector,Inverted);
+            TestTrue(TEXT("Upright/inverted force and pitch equilibrium available"),FMath::Abs(Equilibrium.Key.Z)<.01 && FMath::Abs(Equilibrium.Value.Y)<.01);
+            const double Slope=(Forces(Vjx,Alpha+.001,Elevator,FVector::ZeroVector,Inverted).Value.Y-Forces(Vjx,Alpha-.001,Elevator,FVector::ZeroVector,Inverted).Value.Y)/.002;
+            UE_LOG(LogTemp,Display,TEXT("VJX_TRIM cg=%d inverted=%d speed=20 alpha=%.3f elevator=%.4f pitch_slope=%.4f"),
+                Cg,Inverted,FMath::RadiansToDegrees(Alpha),Elevator,Slope);
+            if (!Inverted && Cg==88) TestTrue(TEXT("Forward CG restores incidence"),Slope<0.);
+            if (!Inverted && Cg==128) TestTrue(TEXT("Aft experimental range reaches neutral boundary"),Slope>0.);
+        }
+    }
+    return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVjxAileronTest, "SimPlaneur.Physics.VjxAilerons",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -548,6 +729,80 @@ bool FApusTest::RunTest(const FString&)
     UE_LOG(LogTemp,Display,TEXT("APUS_GLIDE airspeed_mps=%.2f altitude_m=%.2f sink_mps=%.2f"),Glide.Airspeed(),Glide.Altitude(),Glide.SinkRate());
     TestTrue(TEXT("Neutral glide remains stable"),!Glide.WorldPose().ContainsNaN() && Glide.Altitude()>55.
         && Glide.Airspeed()>8. && Glide.Airspeed()<22. && FMath::Abs(Glide.SinkRate())<3.);
+    return !HasAnyErrors();
+}
+// Numerical diagnostics, not a claim of flight-test validation. Peaks of body
+// roll/yaw rate can describe a transient tumble or a spiral as well as a spin.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFoxSpinDiagnosticsTest,"SimPlaneur.Physics.FoxSpinDiagnostics",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFoxSpinDiagnosticsTest::RunTest(const FString&)
+{
+    FGliderDynamics Reference;
+    if (!TestTrue(TEXT("Load Fox spin diagnostics"),Reference.LoadModel(
+        FPaths::ProjectContentDir()/TEXT("FlightModels/Fox7m.json")))) return false;
+    Reference.SetWind(FVector::ZeroVector);
+    int32 FlatCases=0,CaseCount=0;
+    for (const bool Dynamic : {false,true})
+    for (const int32 Cg : {150,160,170})
+    for (const int32 Aileron : {-1,0,1})
+    {
+        double MirrorPitch=0.,MirrorSpeed=0.,MirrorRotation=0.;
+        for (const int32 Direction : {-1,1})
+        {
+            FGliderDynamics Model=Reference;
+            Model.SetLoading({24000,Cg});
+            Model.LaunchFrom(FTransform(FRotator(Dynamic?3.5:19.,0,0),FVector(0,0,100000)),
+                FVector(Dynamic?28.:14.,0,0));
+            double MeanPitch=0.,MeanAlpha=0.,MeanSpeed=0.,MeanSink=0.,MeanRotation=0.;
+            double FlatRun=0.,LongestFlatRun=0.;
+            int32 Samples=0;
+            for (int32 I=0;I<2400;++I)
+            {
+                const bool PullOnly=Dynamic && I<120;
+                Model.Step(-1.,PullOnly?0.:Direction*.8,PullOnly?0.:Direction*Aileron);
+                const FTransform Pose=Model.WorldPose();
+                const FVector WorldRates=Model.AngularVelocityWorld();
+                if (Pose.ContainsNaN() || WorldRates.ContainsNaN() || !FMath::IsFinite(Model.Airspeed()))
+                {
+                    AddError(FString::Printf(TEXT("Fox spin diagnostics diverged: cg=%d aileron=%d direction=%d dynamic=%d"),
+                        Cg,Aileron,Direction,Dynamic));
+                    return false;
+                }
+                // Assess the last five seconds, after the entry transient.
+                if (I<1800) continue;
+                const FVector Flow=Model.RelativeFlowNED();
+                const FVector Air=Pose.GetRotation().UnrotateVector(FVector(-Flow.X,-Flow.Y,Flow.Z));
+                const double Alpha=FMath::RadiansToDegrees(FMath::Atan2(-Air.Z,Air.X));
+                const double Pitch=Pose.Rotator().Pitch;
+                MeanPitch+=Pitch; MeanAlpha+=Alpha; MeanSpeed+=Model.Airspeed();
+                MeanSink+=Model.SinkRate(); MeanRotation+=WorldRates.Z; ++Samples;
+                // An operational detection window for an upright flattened
+                // spin: stalled, descending, nose near the horizon, rotation
+                // predominantly around world vertical. Thresholds are test
+                // conventions, not measured Fox certification boundaries.
+                const bool Flat=FMath::Abs(Pitch)<25. && Alpha>40. && Model.SinkRate()>1.
+                    && Pose.GetRotation().GetUpVector().Z>0.
+                    && FMath::Abs(WorldRates.Z)>.5 && FMath::Abs(WorldRates.Z)>.8*WorldRates.Size();
+                FlatRun=Flat ? FlatRun+Model.TimeStep : 0.;
+                LongestFlatRun=FMath::Max(LongestFlatRun,FlatRun);
+            }
+            MeanPitch/=Samples; MeanAlpha/=Samples; MeanSpeed/=Samples;
+            MeanSink/=Samples; MeanRotation/=Samples;
+            if (Direction<0) { MirrorPitch=MeanPitch; MirrorSpeed=MeanSpeed; MirrorRotation=MeanRotation; }
+            else
+            {
+                TestTrue(TEXT("Mirrored spin entries preserve pitch and speed"),
+                    FMath::Abs(MeanPitch-MirrorPitch)<1.e-5 && FMath::Abs(MeanSpeed-MirrorSpeed)<1.e-5);
+                TestTrue(TEXT("Mirrored spin entries reverse vertical rotation"),FMath::Abs(MeanRotation+MirrorRotation)<1.e-5);
+            }
+            ++CaseCount;
+            if (LongestFlatRun>=4.) ++FlatCases;
+            UE_LOG(LogTemp,Display,TEXT("FOX_SPIN_ENVELOPE cg=%d aileron=%d direction=%d dynamic=%d mean_pitch=%.2f mean_alpha=%.2f speed=%.2f sink=%.2f world_r=%.3f continuous_flat_s=%.3f"),
+                Cg,Aileron,Direction,Dynamic,MeanPitch,MeanAlpha,MeanSpeed,MeanSink,MeanRotation,LongestFlatRun);
+        }
+    }
+    UE_LOG(LogTemp,Display,TEXT("FOX_SPIN_ENVELOPE_SUMMARY cases=%d sustained_flat_cases=%d flight_test_validated=0"),CaseCount,FlatCases);
     return !HasAnyErrors();
 }
 #endif

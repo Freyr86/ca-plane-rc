@@ -1,4 +1,5 @@
 #include "GliderDynamics.h"
+#include "PostStallPolar.h"
 #include "Algo/BinarySearch.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
@@ -56,6 +57,13 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
     if (!FFileHelper::LoadFileToString(Data,*Filename) ||
         !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Data),Json) || !Json) return false;
     FGliderDynamics M;
+    Json->TryGetBoolField(TEXT("separated_wing_flow"),M.SeparatedWingFlow);
+    if (Json->HasField(TEXT("post_stall_roll_blend")) &&
+        (!Number(Json,TEXT("post_stall_roll_blend"),M.PostStallRollBlend) || M.PostStallRollBlend<0. || M.PostStallRollBlend>1.)) return false;
+    if (Json->HasField(TEXT("stalled_tail_efficiency")) &&
+        (!Number(Json,TEXT("stalled_tail_efficiency"),M.StalledTailEfficiency) || M.StalledTailEfficiency<0. || M.StalledTailEfficiency>1.)) return false;
+    if (Json->HasField(TEXT("cg_travel_aft_mm")) &&
+        (!Json->TryGetNumberField(TEXT("cg_travel_aft_mm"),M.AftCgTravelMm) || M.AftCgTravelMm<1 || M.AftCgTravelMm>100)) return false;
     if(Json->HasField(TEXT("impact_resistance")) && (!Number(Json,TEXT("impact_resistance"),M.ImpactResistance) || M.ImpactResistance<=0.)) return false;
     double Schema;
     if (!Number(Json,TEXT("schema"),Schema) || Schema!=1. ||
@@ -94,6 +102,14 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
         }
     }
     if (!Increasing(M.Angles)) return false;
+    int32 PositivePeak=0, NegativePeak=0;
+    for (int32 I=1;I<M.Lift.Num();++I)
+    {
+        if (M.Lift[I]>M.Lift[PositivePeak]) PositivePeak=I;
+        if (M.Lift[I]<M.Lift[NegativePeak]) NegativePeak=I;
+    }
+    M.PositiveStallAngle=FMath::Abs(M.Angles[PositivePeak]);
+    M.NegativeStallAngle=FMath::Abs(M.Angles[NegativePeak]);
     Json->TryGetNumberField(TEXT("discus_launch_pitch_trim"),M.LaunchPitchTrim);
     Json->TryGetNumberField(TEXT("spoiler_drag_coefficient"),M.SpoilerDrag);
     Json->TryGetBoolField(TEXT("conventional_tail"), M.ConventionalTail);
@@ -113,6 +129,16 @@ bool FGliderDynamics::LoadModel(const FString& Filename)
         M.Travel = M.StandardTravel;
     }
     Json->TryGetBoolField(TEXT("elevons"),M.Elevons);
+    if (Json->HasField(TEXT("post_stall_tail")))
+    {
+        const FJson* Tail;
+        if (!Json->TryGetObjectField(TEXT("post_stall_tail"),Tail) || !M.SeparatedWingFlow ||
+            !M.ConventionalTail || M.Elevons || M.FixedFin || M.Pitch.Angle>=0. || M.Yaw.Angle<=0. ||
+            !Number(*Tail,TEXT("arm_m"),M.TailArm) || M.TailArm<=M.Chord || M.TailArm>M.Span ||
+            !Number(*Tail,TEXT("horizontal_height_m"),M.HorizontalTailHeight) ||
+            !Number(*Tail,TEXT("vertical_height_m"),M.VerticalTailHeight) ||
+            FMath::Abs(M.HorizontalTailHeight)>M.TailArm || FMath::Abs(M.VerticalTailHeight)>M.TailArm) return false;
+    }
     Json->TryGetNumberField(TEXT("aileron_yaw_coefficient"),M.YawFromAilerons);
     M.StandardMass = M.Mass;
     int32 MotorWatts=FMath::RoundToInt32(150.*M.StandardMass);
@@ -130,7 +156,7 @@ FGliderLoading FGliderDynamics::LimitLoading(FGliderLoading Setting) const
     const auto Standard = StandardLoading();
     Setting.MassGrams = FMath::Clamp(Setting.MassGrams, FMath::RoundToInt32(Standard.MassGrams * .75),
                                      FMath::RoundToInt32(Standard.MassGrams * 1.375));
-    Setting.CgMm = FMath::Clamp(Setting.CgMm, ReferenceCgMm - 10, ReferenceCgMm + 10);
+    Setting.CgMm = FMath::Clamp(Setting.CgMm, ReferenceCgMm - ForwardCgTravelMm, ReferenceCgMm + AftCgTravelMm);
     return Setting;
 }
 
@@ -183,6 +209,30 @@ void FGliderDynamics::Reset(FVector WindNED)
     Left=Right=AileronServo=0.;
     Stopped=false;
 }
+void FGliderDynamics::PolarCoefficients(double Alpha,double Speed,double& CL,double& CD) const
+{
+    if (SeparatedWingFlow)
+    {
+        PostStallPolar::Sample(Angles,Lift,Drag,Speeds,Alpha,Speed,CL,CD);
+        return;
+    }
+    double AngleFraction, SpeedFraction;
+    const int32 Row=Interval(Angles,Alpha,AngleFraction), Column=Interval(Speeds,Speed,SpeedFraction);
+    const auto DragRow=[&](int32 R) { return FMath::Lerp(Drag[R*Speeds.Num()+Column],Drag[R*Speeds.Num()+Column+1],SpeedFraction); };
+    CL=FMath::Lerp(Lift[Row],Lift[Row+1],AngleFraction);
+    CD=FMath::Lerp(DragRow(Row),DragRow(Row+1),AngleFraction);
+}
+FVector FGliderDynamics::PolarForce(FVector Air, double Density, double AreaFraction) const
+{
+    const double Speed=Air.Size(), Alpha=FMath::Atan2(Air.Z,Air.X);
+    double CL,CD;
+    PolarCoefficients(Alpha,Speed,CL,CD);
+    CL*=1.-.23*SpoilerPosition;
+    CD+=SpoilerDrag*SpoilerPosition;
+    const FVector Flow=Air.GetSafeNormal(), Down(-FMath::Sin(Alpha),0,FMath::Cos(Alpha));
+    return .5*Density*Speed*Speed*Area*AreaFraction*(-CD*Flow-CL*Down);
+}
+
 void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVector Rates,double Height,
     double PitchServo,double YawServo,double RollServo,double ShaftWatts,FVector& Linear,FVector& Angular) const
 {
@@ -190,15 +240,8 @@ void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVec
     const double V=Air.Size();
     const double Alpha=FMath::Atan2(Air.Z,Air.X);
     const double Beta=FMath::Atan2(Air.Y,FMath::Sqrt(Air.X*Air.X+Air.Z*Air.Z));
-    double AngleFraction, SpeedFraction;
-    const int32 AngleRow = Interval(Angles, Alpha, AngleFraction);
-    const int32 SpeedColumn = Interval(Speeds, V, SpeedFraction);
-    const auto DragAtSpeed = [&](int32 Row)
-    {
-        const int32 Index = Row * Speeds.Num() + SpeedColumn;
-        return FMath::Lerp(Drag[Index], Drag[Index + 1], SpeedFraction);
-    };
-    const double CleanLift = FMath::Lerp(Lift[AngleRow], Lift[AngleRow + 1], AngleFraction);
+    double CleanLift,PolarDrag;
+    PolarCoefficients(Alpha,V,CleanLift,PolarDrag);
     const double CL = CleanLift*(1.-.23*SpoilerPosition) + FlapDeltaLift*FMath::Clamp(1.-FMath::Abs(Alpha)/.52,0.,1.);
     const double ExtraInducedDrag = (CL*CL-CleanLift*CleanLift)*Area/(PI*.85*Span*Span);
     // Scale control effectiveness after the servo/mixer limits so values above
@@ -206,7 +249,7 @@ void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVec
     const double PitchControl = PitchServo * (Gains.Pitch * .01);
     const double YawControl = YawServo * (Gains.Yaw * .01);
     const double RollControl = YawServo * (Gains.Roll * .01);
-    const double CD = FMath::Lerp(DragAtSpeed(AngleRow), DragAtSpeed(AngleRow + 1), AngleFraction)
+    const double CD = PolarDrag
                     + SpoilerDrag*SpoilerPosition + FlapDeltaDrag + ExtraInducedDrag + DragElevator * PitchControl * PitchControl + DragRudder * YawControl * YawControl;
     const double CY=SideBeta*Beta+SideRudder*YawControl;
     double Sa,Ca,Sb,Cb;
@@ -219,17 +262,115 @@ void FGliderDynamics::Accelerations(FQuat BodyToWorld,FVector WorldVelocity,FVec
     // An updraft reaching one wing first acts through the same roll damping
     // derivative as a spanwise velocity difference caused by body rotation.
     const double AirRollRate = BodyToWorld.UnrotateVector(WingWindDifference).Z / Span;
-    const FVector Torque=FVector::CrossProduct(FVector(CgShift, 0., 0.), Force) + QS*FVector(
-        Span*(Roll.Evaluate(Beta,Span*Inv2V*(Rates.X-AirRollRate),RollControl) + AileronEffect*RollServo*(Gains.Roll*.01)),
-        Chord*(Pitch.Evaluate(Alpha,Chord*Inv2V*Rates.Y,PitchControl)+FlapDeltaPitch
+    double Separation=0.;
+    double TailEfficiency=1.;
+    FVector WingTorque=FVector::ZeroVector;
+    if (SeparatedWingFlow)
+    {
+        // Blend into two half-wings near the stall. Each samples its own
+        // velocity, including yaw/roll and the local gust. The descending
+        // wing can then lose lift and gain drag beyond the polar's CL peak.
+        const double Incidence=FMath::Abs(Alpha);
+        const double StallAngle=Alpha>=0. ? PositiveStallAngle : NegativeStallAngle;
+        const double Blend=FMath::Clamp((Incidence-StallAngle)/FMath::DegreesToRadians(3.),0.,1.);
+        Separation=PostStallRollBlend*Blend*Blend*(3.-2.*Blend);
+        const double Wake=FMath::Clamp((Incidence-StallAngle)/FMath::DegreesToRadians(20.),0.,1.);
+        TailEfficiency=1.-(1.-StalledTailEfficiency)*Wake*Wake*(3.-2.*Wake);
+        FVector WingForce=FVector::ZeroVector;
+        const FVector Gust=BodyToWorld.UnrotateVector(WingWindDifference);
+        for (const int32 SideSign : {-1,1})
+        {
+            const FVector Arm(0,SideSign*Span*.25,0);
+            FVector LocalAir=Air+FVector::CrossProduct(Rates,Arm)-SideSign*.25*Gust;
+            // Down-going aileron increases local incidence; its authority
+            // follows the polar, including reversal beyond the lift peak.
+            const double AileronAngle=-SideSign*AileronEffect*RollServo*(Gains.Roll*.01)/2.5;
+            const FQuat Deflection(FVector(0,1,0),-AileronAngle);
+            // Evaluate the effective incidence, then return force to the body
+            // frame so lift cannot do work along the actual local airflow.
+            const FVector HalfForce=Deflection.UnrotateVector(PolarForce(Deflection.RotateVector(LocalAir),Rho,.5));
+            WingForce+=HalfForce;
+            WingTorque+=FVector::CrossProduct(Arm,HalfForce);
+        }
+        Force+=Separation*(WingForce-PolarForce(Air,Rho,1.));
+        WingTorque*=Separation;
+    }
+    const double RollRateMoment=Roll.Rate*Span*Inv2V*(Rates.X-AirRollRate);
+    // A flying wing has elevons, so separation attenuates their moment rather
+    // than blanketing a separate tail's static stability contribution.
+    const double StaticPitchEfficiency=Elevons ? 1. : TailEfficiency;
+    const double PitchMoment=StaticPitchEfficiency*(Pitch.Bias+Pitch.Angle*Alpha)+TailEfficiency*Pitch.Control*PitchControl
+        +Pitch.Rate*Chord*Inv2V*Rates.Y;
+    FVector Torque=WingTorque+FVector::CrossProduct(FVector(CgShift, 0., 0.), Force) + QS*FVector(
+        Span*(Roll.Bias+Roll.Angle*Beta+Roll.Control*RollControl+(1.-Separation)*RollRateMoment
+            +(1.-Separation)*AileronEffect*RollServo*(Gains.Roll*.01)),
+        Chord*(PitchMoment+FlapDeltaPitch
             +ExtraDownElevatorMoment*FMath::Clamp(PitchControl,0.,1.)*FMath::Max(PitchControl,0.)),
         Span*(Yaw.Evaluate(Beta,Span*Inv2V*Rates.Z,YawControl)+YawFromAilerons*RollServo*Gains.Roll*.01));
+    if (TailArm>0.)
+    {
+        // Replace normal-flight pitch/yaw derivatives once the wing separates.
+        // Surface velocities include rotation, and the fin only sees flow in
+        // its chord/normal plane, not the vertical descent along its span.
+        // At negligible translation retain the drag of rotating surfaces.
+        const double RotatingSpeed=Rates.Size()*TailArm;
+        const double LowSpeedWeight=FMath::Square(FMath::Clamp(1.-V/2.,0.,1.));
+        const double FlowSquare=V*V+RotatingSpeed*RotatingSpeed;
+        const double RotationBlend=FlowSquare>1.e-12 ? LowSpeedWeight*RotatingSpeed*RotatingSpeed/FlowSquare : 0.;
+        const double Blend=FMath::Max(Separation,RotationBlend);
+        FVector TailForce,TailTorque,ReferenceForce,UnusedTorque;
+        TailForces(Air,Rates,Rho,PitchControl,YawControl,TailEfficiency,TailForce,TailTorque);
+        // The aircraft polar already contains neutral tail forces. Add only
+        // the control/rotation increment to the net force; replace the full
+        // pitching/yawing moment rather than double-counting its damping.
+        TailForces(Air,FVector::ZeroVector,Rho,0.,0.,TailEfficiency,ReferenceForce,UnusedTorque);
+        const FVector OldControlForce=QS*(SideRudder*YawControl*Side
+            -(DragElevator*PitchControl*PitchControl+DragRudder*YawControl*YawControl)*Flow);
+        const FVector DeltaForce=Blend*(TailForce-ReferenceForce-OldControlForce);
+        Force+=DeltaForce;
+        const double OldPitch=QS*Chord*PitchMoment;
+        const double OldYaw=QS*Span*Yaw.Evaluate(Beta,Span*Inv2V*Rates.Z,YawControl);
+        const double OldRudderRoll=QS*Span*Roll.Control*RollControl;
+        Torque+=Blend*(TailTorque-FVector(OldRudderRoll,OldPitch,OldYaw))
+            +FVector::CrossProduct(FVector(CgShift,0.,0.),DeltaForce);
+    }
     // Generic folding propeller on the centreline. An effective slipstream
     // speed of 12 m/s limits static thrust; at speed thrust falls with airspeed.
     if (ShaftWatts>0.)
         Force.X += .75*ShaftWatts/FMath::Sqrt(144.+FMath::Square(FMath::Max(0.,Air.X)));
     Linear=BodyToWorld.RotateVector(Force/Mass)+FVector(0,0,9.80665);
     Angular=(Torque-FVector::CrossProduct(Rates,Inertia*Rates))/Inertia;
+}
+
+void FGliderDynamics::TailForces(FVector Air,FVector Rates,double Density,double Elevator,double Rudder,
+    double Efficiency,FVector& Force,FVector& Torque) const
+{
+    // Equivalent surface areas match the existing small-angle static moments.
+    // They are identified influences, not measured geometric tail areas.
+    // Bounded normal pressure is a quasi-steady approximation; deflected
+    // normals keep force dissipative even in reversed flow.
+    constexpr double Slope=4.,NormalMaximum=1.28;
+    const auto NormalCoefficient=[](double Angle) {
+        const double S=FMath::Sin(Angle);
+        return Slope*S/(1.+(Slope/NormalMaximum-1.)*FMath::Abs(S));
+    };
+    const double HorizontalArea=-Pitch.Angle*Area*Chord/(TailArm*Slope);
+    const double VerticalArea=Yaw.Angle*Area*Span/(TailArm*Slope);
+    const FVector HorizontalArm(-TailArm,0.,-HorizontalTailHeight),VerticalArm(-TailArm,0.,-VerticalTailHeight);
+    const FVector HorizontalAir=Air+FVector::CrossProduct(Rates,HorizontalArm+FVector(CgShift,0.,0.));
+    const FVector VerticalAir=Air+FVector::CrossProduct(Rates,VerticalArm+FVector(CgShift,0.,0.));
+    const double HorizontalDeflection=(Pitch.Control*Elevator+Pitch.Bias)/Pitch.Angle;
+    const double VerticalDeflection=(Yaw.Control*Rudder+Yaw.Bias)/Yaw.Angle;
+    const double HorizontalAngle=FMath::Atan2(HorizontalAir.Z,HorizontalAir.X)+HorizontalDeflection;
+    const double VerticalAngle=FMath::Atan2(VerticalAir.Y,VerticalAir.X)+VerticalDeflection;
+    const FVector HorizontalNormal(FMath::Sin(HorizontalDeflection),0.,FMath::Cos(HorizontalDeflection));
+    const FVector VerticalNormal(FMath::Sin(VerticalDeflection),FMath::Cos(VerticalDeflection),0.);
+    const FVector HorizontalForce=-.5*Density*(FMath::Square(HorizontalAir.X)+FMath::Square(HorizontalAir.Z))
+        *HorizontalArea*Efficiency*NormalCoefficient(HorizontalAngle)*HorizontalNormal;
+    const FVector VerticalForce=-.5*Density*(FMath::Square(VerticalAir.X)+FMath::Square(VerticalAir.Y))
+        *VerticalArea*NormalCoefficient(VerticalAngle)*VerticalNormal;
+    Force=HorizontalForce+VerticalForce;
+    Torque=FVector::CrossProduct(HorizontalArm,HorizontalForce)+FVector::CrossProduct(VerticalArm,VerticalForce);
 }
 void FGliderDynamics::Step(double Elevator,double Rudder)
 {

@@ -1,6 +1,7 @@
 #include "SlopeFlightPawn.h"
 #if !UE_BUILD_SHIPPING
 #include "FlightMenu.h"
+#include "GameUpdater.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
@@ -11,6 +12,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -64,6 +66,81 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
             nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
     };
+    if (FParse::Param(FCommandLine::Get(),TEXT("CgUIProof")))
+    {
+        bool OK=true;
+        switch(MenuProofStep)
+        {
+        case 0:
+            OK=Click(TEXT("Hangar")) && Click(TEXT("MODÈLE+")) && Click(TEXT("MODÈLE+")) && ModelIndex()==2;
+            OK &= Click(TEXT("DefaultCg")); break;
+        case 1:
+            for (int32 I=0;I<10;++I) OK &= Click(TEXT("CENTRAGE LONGITUDINAL-"));
+            if (auto Scroll=FindTagged(Menu.ToSharedRef(),TEXT("MenuScroll"))) StaticCastSharedPtr<SScrollBox>(Scroll)->SetScrollOffset(350.f);
+            OK &= Menu->DraftCgMm()==88; break;
+        case 2: Shot(TEXT("cg-profile-forward.png")); break;
+        case 3: OK=Click(TEXT("DefaultCg")) && Menu->DraftCgMm()==98; break;
+        case 4: Shot(TEXT("cg-profile-reference.png")); break;
+        case 5:
+            for (int32 I=0;I<30;++I) OK &= Click(TEXT("CENTRAGE LONGITUDINAL+"));
+            OK &= Menu->DraftCgMm()==128; break;
+        case 6: Shot(TEXT("cg-profile-aft.png")); break;
+        case 7:
+            OK=Click(TEXT("SelectAircraft")) && Loading().CgMm==128 && Click(TEXT("Settings")); break;
+        case 8:
+            OK=Click(TEXT("RÉSISTANCE DES PLANEURS+")) && ResistanceMode()==EAircraftResistance::Resistant; break;
+        case 9: Shot(TEXT("resistance-resistant.png")); break;
+        case 10:
+            OK=Click(TEXT("RÉSISTANCE DES PLANEURS+")) && ResistanceMode()==EAircraftResistance::Indestructible; break;
+        case 11: Shot(TEXT("resistance-indestructible.png")); break;
+        case 12:
+        {
+            int32 Saved=-1;
+            GConfig->GetInt(TEXT("SimPlaneur.Physics"),TEXT("ResistanceMode"),Saved,GGameUserSettingsIni);
+            OK=Saved==2 && LandingDamage(100.,true,true,true,ResistanceMode())==0;
+            OK &= Click(TEXT("RÉSISTANCE DES PLANEURS+")) && ResistanceMode()==EAircraftResistance::Realistic;
+            UE_LOG(LogTemp,Display,TEXT("CG_UI_PROOF complete success=%d"),OK);
+            FPlatformMisc::RequestExitWithStatus(false,OK?0:3); break;
+        }
+        }
+        UE_LOG(LogTemp,Display,TEXT("CG_UI_PROOF step=%d success=%d"),MenuProofStep,OK);
+        if (!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
+    if (FParse::Param(FCommandLine::Get(),TEXT("UpdaterUIProof")))
+    {
+        auto U=FGameUpdater::Get(); using S=FGameUpdater::EState; bool OK=true;
+        switch(MenuProofStep)
+        {
+        case 0: OK=Click(TEXT("Settings")) && Click(TEXT("Updates")); break;
+        case 1:
+            U->Release.Version=TEXT("0.5.8"); U->Release.Size=431000000;
+            U->Release.Notes=TEXT("Mon 1er vol : améliorations du tutoriel et des atterrissages.");
+            U->Status=TEXT("Version 0.5.8 disponible."); U->State=S::Available; break;
+        case 2: Shot(TEXT("updates-available.png")); break;
+        case 3:
+            U->State=S::Downloading; U->Received=215500000; U->Status=TEXT("Téléchargement en cours… Tu peux continuer à jouer."); break;
+        case 4: Shot(TEXT("updates-progress.png")); break;
+        case 5:
+            U->State=S::Ready; U->Status=TEXT("Mise à jour prête. Récupère le planeur avant de l’installer.");
+            bHeldForLaunch=false; break;
+        case 6:
+            // Slate evaluates attributes of a previously collapsed widget on
+            // the next layout pass, after it becomes visible.
+            OK=!FindTagged(Menu.ToSharedRef(),TEXT("InstallUpdate"))->IsEnabled();
+            bHeldForLaunch=true; break;
+        case 7:
+            OK=FindTagged(Menu.ToSharedRef(),TEXT("InstallUpdate"))->IsEnabled()==FGameUpdater::CanInstall();
+            Shot(TEXT("updates-ready.png")); break;
+        default:
+            U->State=S::Idle; U->Release=FGameRelease();
+            UE_LOG(LogTemp,Display,TEXT("UPDATER_UI complete")); FPlatformMisc::RequestExit(false);return;
+        }
+        UE_LOG(LogTemp,Display,TEXT("UPDATER_UI step=%d success=%d"),MenuProofStep,OK);
+        if(!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep; return;
+    }
     if (FParse::Param(FCommandLine::Get(),TEXT("EquipmentProof")))
     {
         bool OK=true;

@@ -1,4 +1,6 @@
 #include "FlightMenu.h"
+#include "GameUpdater.h"
+#include "Misc/App.h"
 #include "FlightMap.h"
 #include "ImageUtils.h"
 #include "Engine/Texture2D.h"
@@ -146,15 +148,51 @@ namespace
 
     // Simplified plan outlines in a 320 x 150 reference frame, nose up.
     // The full view and the detail share the same geometry and CG datum.
+    class SCgProfile : public SLeafWidget
+    {
+    public:
+        SLATE_BEGIN_ARGS(SCgProfile) {} SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_END_ARGS()
+        void Construct(const FArguments& Args) { Offset=Args._OffsetMm; }
+        FVector2D ComputeDesiredSize(float) const override { return {320,78}; }
+        int32 OnPaint(const FPaintArgs&,const FGeometry& Geo,const FSlateRect&,FSlateWindowElementList& Draw,
+            int32 Layer,const FWidgetStyle&,bool) const override
+        {
+            const FVector2f Scale(Geo.GetLocalSize()/FVector2D(320,78));
+            const float Angle=FMath::DegreesToRadians(FMath::Clamp(Offset.Get()*.4f,-4.f,12.f));
+            auto Point=[&](FVector2f P) {
+                return (FVector2f(160,36)+FVector2f(P.X*FMath::Cos(Angle)-P.Y*FMath::Sin(Angle),
+                    P.X*FMath::Sin(Angle)+P.Y*FMath::Cos(Angle)))*Scale;
+            };
+            FSlateDrawElement::MakeLines(Draw,Layer,Geo.ToPaintGeometry(),
+                {FVector2f(15,36)*Scale,FVector2f(305,36)*Scale},ESlateDrawEffect::None,Rule,true,1.f);
+            TArray<FVector2f> Body;
+            for (const FVector2f P : {FVector2f(-130,0),FVector2f(-100,-8),FVector2f(-35,-9),
+                FVector2f(-16,-4),FVector2f(100,0),FVector2f(112,-20),FVector2f(124,-20),
+                FVector2f(125,4),FVector2f(-95,6),FVector2f(-130,0)}) Body.Add(Point(P));
+            FSlateDrawElement::MakeLines(Draw,Layer+1,Geo.ToPaintGeometry(),Body,ESlateDrawEffect::None,Ink,true,2.f);
+            FSlateDrawElement::MakeLines(Draw,Layer+1,Geo.ToPaintGeometry(),
+                {Point({-34,-1}),Point({21,-1})},ESlateDrawEffect::None,Ink,true,4.f);
+            FSlateDrawElement::MakeLines(Draw,Layer+2,Geo.ToPaintGeometry(),
+                {FVector2f(149,65)*Scale,FVector2f(160,43)*Scale,FVector2f(171,65)*Scale},ESlateDrawEffect::None,MutedInk,true,2.f);
+            const FVector2f CG=Point({Offset.Get()*.8f,0});
+            FSlateDrawElement::MakeLines(Draw,Layer+3,Geo.ToPaintGeometry(),
+                {CG-FVector2f(0,5)*Scale,CG+FVector2f(0,5)*Scale},ESlateDrawEffect::None,Gold,true,6.f);
+            return Layer+3;
+        }
+    private:
+        TAttribute<int32> Offset;
+    };
+
     class SCgPlan : public SLeafWidget
     {
     public:
         DECLARE_DELEGATE_OneParam(FSetOffset, int32);
-        SLATE_BEGIN_ARGS(SCgPlan) {} SLATE_ARGUMENT(int32, ModelIndex) SLATE_ARGUMENT(double, SpanCm) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
+        SLATE_BEGIN_ARGS(SCgPlan) : _MinOffset(-10), _MaxOffset(10) {} SLATE_ARGUMENT(int32, ModelIndex) SLATE_ARGUMENT(double, SpanCm) SLATE_ATTRIBUTE(int32, OffsetMm) SLATE_ARGUMENT(int32, MinOffset) SLATE_ARGUMENT(int32, MaxOffset) SLATE_EVENT(FSetOffset, OnMove) SLATE_END_ARGS()
         void Construct(const FArguments& Args)
         {
             Offset = Args._OffsetMm;
             OnMove = Args._OnMove;
+            MinOffset=Args._MinOffset; MaxOffset=Args._MaxOffset;
             FullScale = 159.f / (Args._SpanCm * 10.);
             if (Args._ModelIndex == 8)
             {
@@ -302,9 +340,10 @@ namespace
             const FVector2D P=Geo.AbsoluteToLocal(Event.GetScreenSpacePosition())/Geo.GetLocalSize()*FVector2D(320,150);
             const bool Zoom=P.X>=199;
             const float Origin=Zoom?91.f:56.f, Scale=Zoom?ZoomScale:FullScale;
+            GrabScale=Scale;
             const double At=Origin+Offset.Get()*Scale;
             GrabY=P.Y;
-            GrabOffset=FMath::Abs(P.Y-At)<6. ? Offset.Get() : FMath::Clamp(FMath::RoundToInt32((P.Y-Origin)/Scale),-10,10);
+            GrabOffset=FMath::Abs(P.Y-At)<6. ? Offset.Get() : FMath::Clamp(FMath::RoundToInt32((P.Y-Origin)/Scale),MinOffset,MaxOffset);
             OnMove.ExecuteIfBound(GrabOffset);
             return FReply::Handled().CaptureMouse(SharedThis(this));
         }
@@ -312,7 +351,7 @@ namespace
         {
             if (!HasMouseCapture()) return FReply::Unhandled();
             const double Y=150.*Geo.AbsoluteToLocal(Event.GetScreenSpacePosition()).Y/Geo.GetLocalSize().Y;
-            OnMove.ExecuteIfBound(FMath::Clamp(GrabOffset+FMath::RoundToInt32((Y-GrabY)/ZoomScale),-10,10));
+            OnMove.ExecuteIfBound(FMath::Clamp(GrabOffset+FMath::RoundToInt32((Y-GrabY)/GrabScale),MinOffset,MaxOffset));
             return FReply::Handled();
         }
         FReply OnMouseButtonUp(const FGeometry&,const FPointerEvent& Event) override
@@ -324,6 +363,8 @@ namespace
     private:
         static constexpr float ZoomScale=.8f;
         float FullScale=0.;
+        float GrabScale=ZoomScale;
+        int32 MinOffset=-10, MaxOffset=10;
         double GrabY=0.;
         int32 GrabOffset=0;
         TArray<TArray<FVector2f>> Outline;
@@ -337,6 +378,8 @@ void SFlightMenu::Construct(const FArguments& Args)
     Plane=Args._Plane;
     for (int32 I=0;I<int32(EControlGroup::Count);++I) Groups.Add(MakeShared<FString>(GroupLabel(EControlGroup(I))));
     GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"),TEXT("ProjectVersion"),Version,GGameIni);
+    auto Updater=FGameUpdater::Get();
+    if(FGameUpdater::CanInstall() && Updater->Automatic && Updater->State==FGameUpdater::EState::Idle && !FApp::IsUnattended()) Updater->Check();
     if (auto* Texture = FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("Slate/Alpine/I2-Manche-a-air.png")))
         Windsock = FDeferredCleanupSlateBrush::CreateBrush(Texture);
     if(auto* Texture=FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("Slate/Alpine/Wordmark.png")))
@@ -358,7 +401,7 @@ void SFlightMenu::Construct(const FArguments& Args)
     ];
     PanelContent->AddSlot().AutoHeight().Padding(0,4,0,7)[Line(Ink)];
     PanelContent->AddSlot().FillHeight(1)
-    [ SNew(SScrollBox) + SScrollBox::Slot()[ SAssignNew(Body,SBox) ] ];
+    [ SNew(SScrollBox).Tag(TEXT("MenuScroll")) + SScrollBox::Slot()[ SAssignNew(Body,SBox) ] ];
     PanelContent->AddSlot().AutoHeight().Padding(0,5,0,0)[Line(Ink)];
 
     ChildSlot
@@ -512,7 +555,7 @@ void SFlightMenu::Build()
     else
     {
         const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : Page==EPage::Tutorials ? TEXT("Mon 1er vol") : TEXT("Graphismes");
-        Add(*List,Text(Title,27,Ink,TEXT("BoldItalic")),4);
+        Add(*List,Text(Page==EPage::Updates?TEXT("Mises à jour"):Title,27,Ink,TEXT("BoldItalic")),4);
         Add(*List,Line(Ink),10);
         if (Page==EPage::Hangar) Hangar(*List);
         if (Page==EPage::Devices) Devices(*List);
@@ -521,6 +564,7 @@ void SFlightMenu::Build()
         if (Page==EPage::Vario) Vario(*List);
         if (Page==EPage::Map) Map(*List);
         if (Page==EPage::Tutorials) Tutorials(*List);
+        if (Page==EPage::Updates) Updates(*List);
         if (Page==EPage::Equipment)
         {
             Add(*List,Text(TEXT("ÉLASTIQUE / TREUIL"),12,MutedInk,TEXT("Bold")),8);
@@ -568,10 +612,27 @@ void SFlightMenu::Build()
         }
         if (Page==EPage::Settings)
         {
+            Add(*List,Choice(TEXT("RÉSISTANCE DES PLANEURS"),[this]{
+                const TCHAR* Names[]={TEXT("Réaliste"),TEXT("Résistant"),TEXT("Indestructible")};
+                return FString(Names[static_cast<int32>(Plane->ResistanceMode())]);
+            },[this](int32 Step){
+                Plane->SetResistanceMode(static_cast<EAircraftResistance>((static_cast<int32>(Plane->ResistanceMode())+Step+3)%3));
+            }),6);
+            auto ResistanceHint=Live([this]{
+                switch (Plane->ResistanceMode())
+                {
+                    case EAircraftResistance::Resistant: return FString(TEXT("Chocs mieux tolérés · eau et contact sur le dos restent dommageables."));
+                    case EAircraftResistance::Indestructible: return FString(TEXT("Aucun dégât aux prochains impacts · collisions et roulage conservés."));
+                    default: return FString(TEXT("Dégâts selon le choc, la masse et la structure du planeur."));
+                }
+            },11,MutedInk);
+            ResistanceHint->SetAutoWrapText(true);
+            Add(*List,ResistanceHint,12);
             Add(*List,Button(TEXT("Devices"),TEXT("Radio et périphériques"),[this]{Go(EPage::Devices);}),6);
             Add(*List,Button(TEXT("Graphics"),TEXT("Graphismes et affichage"),[this]{Go(EPage::Graphics);}),6);
             Add(*List,Button(TEXT("Vario"),TEXT("Vario sonore"),[this]{Go(EPage::Vario);}),6);
             Add(*List,Button(TEXT("Equipment"),TEXT("Matériel de lancement"),[this]{Go(EPage::Equipment);}),12);
+            Add(*List,Button(TEXT("Updates"),TEXT("Mises à jour du simulateur"),[this]{Go(EPage::Updates);}),12);
         }
         if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),Page==EPage::Map && bMapFromFlight?TEXT("Reprendre la session"):TEXT("Retour au menu"),[this]{if(Page==EPage::Map) CloseMap(); else Go(EPage::Home);}));
     }
@@ -606,6 +667,40 @@ void SFlightMenu::Home(SVerticalBox& List)
     Row("Settings",TEXT("RÉGLAGES"),[this]{Go(EPage::Settings);});
     Row("Credits",TEXT("CRÉDITS"),[this]{Go(EPage::Credits);});
     Row("Quit",TEXT("QUITTER"),[this]{if(auto* PC=Cast<APlayerController>(Plane->GetController())) UKismetSystemLibrary::QuitGame(Plane.Get(),PC,EQuitPreference::Quit,false);});
+    auto UpdateNotice=Button(TEXT("UpdateNotice"),TEXT("NOUVELLE VERSION DISPONIBLE"),[this]{Go(EPage::Updates);});
+    UpdateNotice->SetVisibility(TAttribute<EVisibility>::CreateLambda([] {
+        const auto S=FGameUpdater::Get()->State;
+        return S==FGameUpdater::EState::Available || S==FGameUpdater::EState::Downloading || S==FGameUpdater::EState::Verifying || S==FGameUpdater::EState::Ready?EVisibility::Visible:EVisibility::Collapsed;
+    }));
+    Add(List,UpdateNotice,4);
+}
+
+void SFlightMenu::Updates(SVerticalBox& List)
+{
+    using S=FGameUpdater::EState;
+    auto U=FGameUpdater::Get();
+    Add(List,Text(TEXT("VERSION INSTALLÉE  /  ")+Version,13,MutedInk,TEXT("Bold")),12);
+    auto Status=Live([U]{return U->Status;},14); Status->SetAutoWrapText(true); Add(List,Status,12);
+    Add(List,SNew(SCheckBox).Style(&CheckStyle())
+        .IsChecked_Lambda([U]{return U->Automatic?ECheckBoxState::Checked:ECheckBoxState::Unchecked;})
+        .OnCheckStateChanged_Lambda([U](ECheckBoxState State){U->SetAutomatic(State==ECheckBoxState::Checked);})
+        [Text(TEXT("Vérifier au démarrage"),13)],12);
+    auto Check=Button(TEXT("CheckUpdates"),TEXT("Rechercher une mise à jour"),[U]{U->Check();});
+    Check->SetEnabled(TAttribute<bool>::CreateLambda([U]{return U->State!=S::Checking && U->State!=S::Downloading && U->State!=S::Verifying && U->State!=S::Ready;}));
+    Add(List,Check,8);
+    auto Download=Button(TEXT("DownloadUpdate"),TEXT("Télécharger la mise à jour"),[U]{U->Download();},true);
+    Download->SetVisibility(TAttribute<EVisibility>::CreateLambda([U]{return U->State==S::Available?EVisibility::Visible:EVisibility::Collapsed;})); Add(List,Download,8);
+    auto Progress=SNew(SProgressBar).Percent_Lambda([U]{return U->Release.Size>0?FMath::Clamp(float(double(U->Received.Load())/U->Release.Size),0.f,1.f):0.f;})
+        .FillColorAndOpacity(Coral);
+    Progress->SetVisibility(TAttribute<EVisibility>::CreateLambda([U]{return U->State==S::Downloading?EVisibility::Visible:EVisibility::Collapsed;})); Add(List,Progress,8);
+    auto Bytes=Live([U]{return U->State==S::Downloading?FString::Printf(TEXT("%.1f / %.1f Mo"),U->Received.Load()/1000000.,U->Release.Size/1000000.):FString();},12,MutedInk); Add(List,Bytes,8);
+    auto Install=Button(TEXT("InstallUpdate"),TEXT("Installer et redémarrer"),[this,U]{if(Plane->IsHeldForLaunch()) U->Install();},true);
+    Install->SetVisibility(TAttribute<EVisibility>::CreateLambda([U]{return U->State==S::Ready?EVisibility::Visible:EVisibility::Collapsed;}));
+    Install->SetEnabled(TAttribute<bool>::CreateLambda([this]{return FGameUpdater::CanInstall() && Plane->IsHeldForLaunch();})); Add(List,Install,8);
+    auto Help=Text(FGameUpdater::CanInstall()?TEXT("Les bêtas publiées sont incluses. Le téléchargement peut continuer pendant le jeu. Récupère le planeur avant l’installation : le simulateur se fermera puis redémarrera. Tes réglages et ta calibration seront conservés."):
+        TEXT("La recherche et le téléchargement sont disponibles ici. L’installation automatique fonctionne dans le jeu autonome Windows, pas dans l’éditeur Unreal."),12,MutedInk);
+    Help->SetAutoWrapText(true); Add(List,Help,12);
+    auto Notes=Live([U]{return U->Release.Notes;},12); Notes->SetAutoWrapText(true); Add(List,Notes,12);
 }
 
 void SFlightMenu::Tutorials(SVerticalBox& List)
@@ -702,14 +797,26 @@ void SFlightMenu::ModelSetup(SVerticalBox& List)
             DraftLoading.MassGrams += Step * MassStep;
             DraftLoading = Plane->LimitLoading(DraftLoading);
         }),6);
-    Add(List,Choice(TEXT("CENTRAGE LONGITUDINAL"),[this]{ return FString::Printf(TEXT("%d mm"), DraftLoading.CgMm); },
-        [this](int32 Step){ DraftLoading.CgMm += Step; DraftLoading = Plane->LimitLoading(DraftLoading); }),4);
+    Add(List,Live([this]{ return FString::Printf(TEXT("CENTRAGE   %d mm"), DraftLoading.CgMm); },13,Ink),4);
+    Add(List,SNew(SHorizontalBox)
+        +SHorizontalBox::Slot().FillWidth(1).Padding(0,0,4,0)
+            [SNew(SButton).Tag(TEXT("CENTRAGE LONGITUDINAL-")).ButtonStyle(&Style(false)).ContentPadding(FMargin(8,7))
+             .OnClicked_Lambda([this]{--DraftLoading.CgMm;DraftLoading=Plane->LimitLoading(DraftLoading);return FReply::Handled();})[Text(TEXT("← Avancer · nez"),12,Ink,TEXT("Bold"))]]
+        +SHorizontalBox::Slot().FillWidth(1)
+            [SNew(SButton).Tag(TEXT("CENTRAGE LONGITUDINAL+")).ButtonStyle(&Style(false)).ContentPadding(FMargin(8,7))
+             .OnClicked_Lambda([this]{++DraftLoading.CgMm;DraftLoading=Plane->LimitLoading(DraftLoading);return FReply::Handled();})[Text(TEXT("Reculer · queue →"),12,Ink,TEXT("Bold"))]],4);
+    Add(List,Text(TEXT("PROFIL   ·   NEZ À GAUCHE"),10,MutedInk),2);
+    Add(List,SNew(SCgProfile).OffsetMm_Lambda([this]{return DraftLoading.CgMm-Plane->StandardLoading().CgMm;}),2);
+    Add(List,Text(TEXT("Inclinaison indicative par rapport au centrage d’origine."),10,MutedInk),3);
+    Add(List,Text(TEXT("Avancé : plus stable · reculé : moins stable."),11,MutedInk),4);
     Add(List,SNew(SHorizontalBox)
         +SHorizontalBox::Slot().FillWidth(.62f)[Text(TEXT("VUE DE DESSUS   ↑ NEZ"),10,MutedInk)]
         +SHorizontalBox::Slot().FillWidth(.38f)[Text(TEXT("ZOOM CENTRAGE"),10,MutedInk)],2);
     Add(List,SNew(SCgPlan).Tag(TEXT("CgPlan")).ModelIndex(Plane->ModelIndex()).SpanCm(Plane->ModelSpanCm())
+        .MinOffset(Plane->LimitLoading({DraftLoading.MassGrams,-1000}).CgMm-Plane->StandardLoading().CgMm)
+        .MaxOffset(Plane->LimitLoading({DraftLoading.MassGrams,1000}).CgMm-Plane->StandardLoading().CgMm)
         .OffsetMm_Lambda([this]{ return DraftLoading.CgMm-Plane->StandardLoading().CgMm; })
-        .OnMove_Lambda([this](int32 Delta){ DraftLoading.CgMm=Plane->StandardLoading().CgMm+Delta; }),3);
+        .OnMove_Lambda([this](int32 Delta){ DraftLoading.CgMm=Plane->StandardLoading().CgMm+Delta;DraftLoading=Plane->LimitLoading(DraftLoading); }),3);
     Add(List,Live([this]{
         const int32 Origin = Plane->StandardLoading().CgMm, Delta = DraftLoading.CgMm - Origin;
         const FString Shift = Delta ? FString::Printf(TEXT("%d mm vers %s"), FMath::Abs(Delta), Delta < 0 ? TEXT("le nez") : TEXT("la queue")) : TEXT("sur le repère d’origine");
@@ -717,6 +824,7 @@ void SFlightMenu::ModelSetup(SVerticalBox& List)
     },12,Rust),4);
     Add(List,Text(TEXT("Glisser le point doré · cercle blanc d’origine."),11,MutedInk),6);
     if (Plane->ModelIndex()==8) Add(List,Text(TEXT("Centrage estimé depuis le bord d’attaque à l’emplanture."),11,MutedInk),4);
+    if (Plane->ModelIndex()==2) Add(List,Text(TEXT("88–128 mm · plage d’essai du modèle simulé."),11,Rust),4);
     if (Plane->ModelIndex()==7) Add(List,Text(TEXT("Notice FEMO · 60–70 mm du bord d’attaque à l’emplanture"),11,MutedInk),4);
     if (Plane->ModelIndex()==6) Add(List,Text(TEXT("Notice LongBow Mk2 · 214 mm depuis le nez"),11,MutedInk),4);
     if (Plane->ModelIndex()==1) Add(List,Text(TEXT("Notice K3600  ·  101–106 mm du bord d’attaque"),11,MutedInk),4);
