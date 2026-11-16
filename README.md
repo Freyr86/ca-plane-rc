@@ -4,6 +4,14 @@ Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++
 
 **Bêta v0.5.8 : centrage plus lisible, physique de vol retravaillée et mises à jour intégrées.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.8).
 
+## Prochaine version 0.5.9 — compatibilité et signalements
+
+Un lanceur vérifie Windows, le processeur, la mémoire et les fonctions DirectX réellement disponibles avant de démarrer le moteur. Il explique les incompatibilités et propose un mode **DirectX 11 · graphismes réduits** lorsque la configuration le permet. Le contrôle ne garantit pas la fluidité sur toutes les cartes.
+
+Le bouton **Signaler un problème** est accessible depuis les réglages, le lanceur et le menu Démarrer de Windows. Le joueur relit son rapport avant l'envoi, sans créer de compte. Les signalements sont stockés dans Cloudflare D1 via Sites et leur contenu est réservé au responsable du projet.
+
+[Formulaire de signalement](https://ca-plane-assistance.endlessbow16.chatgpt.site/) · [Fonctionnement et vérifications](docs/COMPATIBILITE_ET_SIGNALEMENTS.md). La 0.5.9 est compilée localement ; le téléchargement public ci-dessus reste celui de la 0.5.8 jusqu'à publication de la nouvelle release.
+
 ## Nouveautés de la 0.5.8
 
 Le réglage du point d’équilibre gagne une **vue de profil** : le nez s’abaisse lorsque le centrage avance et se relève lorsqu’il recule. Ce repère explique le déplacement par rapport au réglage d’origine ; il ne prédit pas l’assiette en vol. Les boutons **Avancer · nez** et **Reculer · queue** permettent un réglage au millimètre.

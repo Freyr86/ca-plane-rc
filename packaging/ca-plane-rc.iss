@@ -2,7 +2,7 @@
   #error GameDir must point to the packaged Windows directory
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.8"
+  #define AppVersion "0.5.9"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\work\release"
@@ -14,7 +14,7 @@ AppName=Ça plane !
 AppVersion={#AppVersion}
 AppPublisher=Freyr86
 AppPublisherURL=https://github.com/Freyr86/ca-plane-rc
-AppSupportURL=https://github.com/Freyr86/ca-plane-rc/issues
+AppSupportURL=https://ca-plane-assistance.endlessbow16.chatgpt.site/
 DefaultDirName={localappdata}\Programs\CaPlaneRC
 DefaultGroupName=Ça plane !
 PrivilegesRequired=lowest
@@ -39,15 +39,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDescription: "Raccourcis :"
 
 [Files]
-Source: "{#GameDir}\*"; DestDir: "{app}"; Excludes: "\SimPlaneurUE\Saved\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#GameDir}\*"; DestDir: "{app}"; Excludes: "\SimPlaneurUE\Saved\*,\compatibility-check.json"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Ça plane !"; Filename: "{app}\SimPlaneurUE.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\Ça plane !"; Filename: "{app}\SimPlaneurUE.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\Ça plane !"; Filename: "{app}\CaPlaneRCLauncher.exe"; WorkingDir: "{app}"; IconFilename: "{app}\SimPlaneurUE.exe"
+Name: "{group}\Ça plane ! — Signaler un problème"; Filename: "{app}\CaPlaneRCLauncher.exe"; Parameters: "--report"; WorkingDir: "{app}"; IconFilename: "{app}\SimPlaneurUE.exe"
+Name: "{autodesktop}\Ça plane !"; Filename: "{app}\CaPlaneRCLauncher.exe"; WorkingDir: "{app}"; IconFilename: "{app}\SimPlaneurUE.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\SimPlaneurUE.exe"; Description: "Lancer Ça plane !"; Flags: nowait postinstall skipifsilent; Check: not ShouldRestartGame
-Filename: "{app}\SimPlaneurUE.exe"; Flags: nowait; Check: ShouldRestartGame
+Filename: "{app}\CaPlaneRCLauncher.exe"; Description: "Lancer Ça plane !"; Flags: nowait postinstall skipifsilent; Check: not ShouldRestartGame
+Filename: "{app}\CaPlaneRCLauncher.exe"; Flags: nowait; Check: ShouldRestartGame
 
 [Code]
 function ShouldRestartGame: Boolean;

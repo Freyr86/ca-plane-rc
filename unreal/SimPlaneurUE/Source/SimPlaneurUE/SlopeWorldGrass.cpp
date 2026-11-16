@@ -11,6 +11,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -57,6 +59,7 @@ float ASlopeWorld::CrownCover(float X,float Y) const
 
 int32 ASlopeWorld::SavedGrassDistanceMeters()
 {
+    if (FParse::Param(FCommandLine::Get(),TEXT("CaPlaneLowSpec"))) return MinGrassDistance;
     int32 Meters = 50;
     GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("GrassDistanceMeters"),Meters,GGameUserSettingsIni);
     return FMath::Clamp(Meters,MinGrassDistance,MaxGrassDistance);

@@ -1,5 +1,10 @@
 #include "FlightMenu.h"
 #include "GameUpdater.h"
+#include "HAL/PlatformProcess.h"
+#include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "HAL/FileManager.h"
 #include "Misc/App.h"
 #include "FlightMap.h"
 #include "ImageUtils.h"
@@ -633,6 +638,17 @@ void SFlightMenu::Build()
             Add(*List,Button(TEXT("Vario"),TEXT("Vario sonore"),[this]{Go(EPage::Vario);}),6);
             Add(*List,Button(TEXT("Equipment"),TEXT("Matériel de lancement"),[this]{Go(EPage::Equipment);}),12);
             Add(*List,Button(TEXT("Updates"),TEXT("Mises à jour du simulateur"),[this]{Go(EPage::Updates);}),12);
+            Add(*List,Button(TEXT("ReportBug"),TEXT("Signaler un problème"),[this]{
+                const FString Launcher=FPaths::ConvertRelativePathToFull(FPaths::Combine(FPlatformProcess::BaseDir(),TEXT("../../../CaPlaneRCLauncher.exe")));
+                if (!WITH_EDITOR && IFileManager::Get().FileExists(*Launcher))
+                {
+                    auto Process=FPlatformProcess::CreateProc(*Launcher,TEXT("--report"),true,false,false,nullptr,0,nullptr,nullptr);
+                    if(Process.IsValid()) { FPlatformProcess::CloseProc(Process); return; }
+                }
+                FPlatformProcess::LaunchURL(TEXT("https://ca-plane-assistance.endlessbow16.chatgpt.site/"),nullptr,nullptr);
+            }),12);
+            auto ReportHelp=Text(TEXT("Sans compte joueur · le formulaire s’ouvre dans ton navigateur. Vérifie les informations avant de les envoyer à Ludovic."),11,MutedInk);
+            ReportHelp->SetAutoWrapText(true); Add(*List,ReportHelp,12);
         }
         if (ConfirmUntil==0.) Add(*List,Button(TEXT("Back"),Page==EPage::Map && bMapFromFlight?TEXT("Reprendre la session"):TEXT("Retour au menu"),[this]{if(Page==EPage::Map) CloseMap(); else Go(EPage::Home);}));
     }
@@ -1027,6 +1043,11 @@ void SFlightMenu::FindSizes()
 
 void SFlightMenu::Graphics(SVerticalBox& List)
 {
+    if(FParse::Param(FCommandLine::Get(),TEXT("CaPlaneLowSpec")))
+    {
+        auto Hint=Text(TEXT("Mode de compatibilité : graphismes réduits pour cette session. Les préférences enregistrées restent conservées tant que tu n’appliques pas de nouveaux réglages."),12,Rust);
+        Hint->SetAutoWrapText(true);Add(List,Hint,12);
+    }
     if (ConfirmUntil>0.)
     {
         Add(List,Text(TEXT("Conserver cet affichage ?"),17,Ink,TEXT("Bold")),8);

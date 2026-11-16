@@ -1,6 +1,6 @@
 param(
     [string]$EngineRoot = 'C:\Program Files\Epic Games\UE_5.8',
-    [string]$Version = '0.5.8',
+    [string]$Version = '0.5.9',
     [switch]$SkipPackage
 )
 $ErrorActionPreference = 'Stop'
@@ -15,6 +15,10 @@ if (!$SkipPackage) {
 }
 $game = Join-Path $archive 'Windows'
 if (!(Test-Path -LiteralPath (Join-Path $game 'SimPlaneurUE.exe'))) { throw 'Jeu autonome absent.' }
+& (Join-Path $PSScriptRoot 'build-launcher.ps1') -Test
+if ($LASTEXITCODE -ne 0) { throw 'Compilation du lanceur de compatibilité impossible.' }
+Copy-Item -LiteralPath (Join-Path $root 'work/launcher/CaPlaneRCLauncher.exe') -Destination $game
+[IO.File]::WriteAllText((Join-Path $game 'CaPlaneRC-version.txt'), $Version, [Text.UTF8Encoding]::new($false))
 $candidates = @(
     (Join-Path $root 'tools\InnoSetup\ISCC.exe'),
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
