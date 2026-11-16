@@ -7,6 +7,7 @@
   "mass_kg": 1.6,
   "reference_cg_from_root_le_mm": 104,
   "conventional_tail": true,
+  "aileron_roll_coefficient": 0.055,
   "inertia_diagonal_kg_m2": [
     0.46863,
     0.167736,

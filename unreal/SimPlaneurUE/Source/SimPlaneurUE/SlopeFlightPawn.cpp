@@ -416,8 +416,8 @@ bool ASlopeFlightPawn::IsControlInUse(EGliderControl Control) const
         if (Control == A::Rudder || Control == A::TrimRudder) return UsesAileronSteering();
     }
     if (Control == A::Meadow || Control == A::Instruments) return false; // Retired player actions.
-    if (Control == A::Aileron || Control == A::TrimAileron) return PreviewModel >= 2 || UsesAileronSteering();
-    if (Control == A::Rudder || Control == A::TrimRudder) return PreviewModel >= 2 || !UsesAileronSteering();
+    if (Control == A::Aileron || Control == A::TrimAileron) return HasAilerons() || UsesAileronSteering();
+    if (Control == A::Rudder || Control == A::TrimRudder) return HasAilerons() || !UsesAileronSteering();
     return ControlSpec(Control).OnTopy;
 }
 
@@ -981,7 +981,7 @@ void ASlopeFlightPawn::AdvanceFlight(float DeltaSeconds)
     if(bF3FProof && MenuProofStep>=4) return;
     if(bGroundPhysics) { UpdateGroundPhysics(DeltaSeconds); return; }
     if (!bModelReady || bMenuOpen || bNoclip) return;
-    const double Aileron = SelectedModel >= 2 ? Radio.SteeringCommand(!AileronSteering[SelectedModel]) : 0.;
+    const double Aileron = Flight.HasAilerons() ? Radio.SteeringCommand(!AileronSteering[SelectedModel]) : 0.;
     if (bHeldForLaunch)
     {
         const float Dt=FMath::Clamp(DeltaSeconds,0.f,.05f);

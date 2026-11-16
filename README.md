@@ -10,6 +10,8 @@ Un lanceur vérifie Windows, le processeur, la mémoire et les fonctions DirectX
 
 Le bouton **Signaler un problème** est accessible depuis les réglages, le lanceur et le menu Démarrer de Windows. Le joueur relit son rapport avant l'envoi, sans créer de compte. Les signalements sont stockés dans Cloudflare D1 via Sites et leur contenu est réservé au responsable du projet.
 
+Le **roulis du K3600** est corrigé : ses ailerons et leur trim sont désormais actifs indépendamment de la dérive. [Détails de la correction et référence du modèle](docs/reference-aircraft/K3600.md).
+
 [Formulaire de signalement](https://ca-plane-assistance.endlessbow16.chatgpt.site/) · [Fonctionnement et vérifications](docs/COMPATIBILITE_ET_SIGNALEMENTS.md). La 0.5.9 est compilée localement ; le téléchargement public ci-dessus reste celui de la 0.5.8 jusqu'à publication de la nouvelle release.
 
 ## Nouveautés de la 0.5.8

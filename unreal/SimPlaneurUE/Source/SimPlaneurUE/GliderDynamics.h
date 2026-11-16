@@ -42,6 +42,7 @@ struct FGliderDynamics
     double MotorPowerWatts() const { return AppliedMotorWatts; }
     void SetMotor(FGliderMotor Value) { Motor={Value.Enabled,FMath::Clamp(Value.Watts,1,FGliderMotor::MaxWatts)}; }
     bool HasElevons() const { return Elevons; }
+    bool HasAilerons() const { return Elevons || !FMath::IsNearlyZero(AileronEffect); }
     bool HasRudder() const { return !FixedFin && !Elevons; }
     bool HasSpoilers() const { return SpoilerDrag > 0.; }
     void AdvanceSpoilers(double Command,double DeltaSeconds)

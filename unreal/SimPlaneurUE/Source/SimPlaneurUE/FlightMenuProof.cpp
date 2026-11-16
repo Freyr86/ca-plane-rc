@@ -616,6 +616,8 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             OK=Click(TEXT("Hangar")); break;
         case 2:
             OK=Click(TEXT("MODÈLE+")) && ModelIndex()==1 && CanSelectModel();
+            OK=OK && HasAilerons() && IsControlInUse(EGliderControl::Aileron)
+                && IsControlInUse(EGliderControl::TrimAileron) && IsControlInUse(EGliderControl::Rudder);
             MenuProofKSteering=UsesAileronSteering(); break;
         case 3:
             MenuProofMass = LimitLoading({Loading().MassGrams + 5, Loading().CgMm}).MassGrams;

@@ -65,6 +65,7 @@ public:
     bool CanSelectModel() const { return AvailableModels[PreviewModel]; }
     bool UsesAileronSteering() const { return AileronSteering[PreviewModel]; }
     bool HasRudder() const { return HangarModels[PreviewModel].HasRudder(); }
+    bool HasAilerons() const { return HangarModels[PreviewModel].HasAilerons(); }
     bool IsControlInUse(EGliderControl Control) const;
     void BrowseModel(int32 Step);
     void ApplyModelSettings(FGliderLoading Setting, bool UseAilerons, FGliderControlGains Gains, FFlapTravel Travel, FGliderMotor Motor);

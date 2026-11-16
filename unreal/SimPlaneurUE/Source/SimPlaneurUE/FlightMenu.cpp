@@ -805,7 +805,7 @@ void SFlightMenu::ModelSetup(SVerticalBox& List)
         return FString(bDraftAileronSteering ? TEXT("Ailerons → direction") : TEXT("Direction → direction"));
     },[this](int32){ bDraftAileronSteering = !bDraftAileronSteering; }),4);
     Add(List,Text(Plane->ModelIndex()==7 ? TEXT("Ailerons et profondeur intégrale · dérive fixe") : Plane->ModelIndex()==6 ? TEXT("Élevons · profondeur et roulis combinés") : Plane->ModelIndex()==0 ? TEXT("Topy · mixage en V avec la profondeur") :
-        Plane->ModelIndex()>=2 ? TEXT("L’autre manche commande les ailerons") : TEXT("Commande de la dérive du K3600"),11,MutedInk),8);
+        Plane->HasAilerons() ? TEXT("L’autre manche commande les ailerons") : TEXT("Commande de direction"),11,MutedInk),8);
     Add(List,Choice(TEXT("MASSE TOTALE"),[this]{ return FString::Printf(TEXT("%d g"), DraftLoading.MassGrams); },
         [this](int32 Step){
             const int32 I = Plane->ModelIndex();

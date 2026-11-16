@@ -460,6 +460,37 @@ bool FFlightEnvelopeTest::RunTest(const FString&)
     return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FK3600AileronTest, "SimPlaneur.Physics.K3600Ailerons",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FK3600AileronTest::RunTest(const FString&)
+{
+    FGliderDynamics Model;
+    if (!TestTrue(TEXT("Load K3600"),Model.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels/K3600.json")))) return false;
+    TestTrue(TEXT("K3600 has independent ailerons and rudder"),Model.HasAilerons() && Model.HasRudder());
+    for (const double Speed : {8.,15.,25.})
+    {
+        auto Probe=[&](double Stick,int32 RollGain)
+        {
+            FGliderDynamics G=Model;
+            G.SetControlGains({RollGain,100,100});
+            G.Reset(FVector::ZeroVector);
+            G.LaunchFrom(FTransform(FQuat::Identity,FVector(0,0,8000)),FVector(Speed,0,0));
+            for (int32 I=0;I<60;++I) G.Step(0,0,Stick);
+            return G.WorldPose().TransformVectorNoScale(FVector::RightVector).Z;
+        };
+        const double Neutral=Probe(0,100), Right=Probe(.5,100), Left=Probe(-.5,100);
+        TestTrue(TEXT("Ailerons bank both ways with neutral rudder"),Right<Neutral-.03 && Left>Neutral+.03);
+        TestTrue(TEXT("Zero roll gain disables aileron response"),FMath::IsNearlyEqual(Probe(.5,0),Neutral,1.e-8));
+        TestTrue(TEXT("Reversing roll gain reverses ailerons"),Probe(.5,-100)>Neutral+.03);
+        UE_LOG(LogTemp,Display,TEXT("K3600_AILERONS speed=%.1f right_wing_z=%.3f left_wing_z=%.3f"),Speed,Right,Left);
+    }
+    FGliderDynamics Topy;
+    TestTrue(TEXT("Load Topy"),Topy.LoadModel(FGliderDynamics::TopyModelPath()));
+    TestFalse(TEXT("Topy retains rudder-only steering"),Topy.HasAilerons());
+    return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVjxAileronTest, "SimPlaneur.Physics.VjxAilerons",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
