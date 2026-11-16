@@ -176,6 +176,13 @@ void ASimPlaneurHUD::DrawEquipmentHUD(const ASlopeFlightPawn& Plane)
             if(Index==0 || Index==3 || Index==8 || Index==9) Enabled=false;
             if(Index==2) Enabled=Enabled && (Step==EFirstFlightStep::Launch || Step==EFirstFlightStep::Retrieve);
             if(Index==7) Enabled=Step>=EFirstFlightStep::Launch && Step!=EFirstFlightStep::Complete;
+            if(Plane.IsBungeeTutorialActive())
+            {
+                const auto B=Plane.TutorialStatus().BungeeStep;
+                if(Index==3) Enabled=B==EBungeeTutorialStep::Select;
+                if(Index==2) Enabled=B==EBungeeTutorialStep::Attach || B==EBungeeTutorialStep::Retrieve;
+                if(Index==7) Enabled=B!=EBungeeTutorialStep::Complete;
+            }
         }
         const float X=Margin+Index*Cell, Y=Bottom+7*Scale, H=62*Scale;
         const FLinearColor Foreground=(Quiet||!Enabled)?Muted:Ivory;

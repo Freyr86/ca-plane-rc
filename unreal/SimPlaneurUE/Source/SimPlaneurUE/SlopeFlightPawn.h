@@ -30,6 +30,8 @@ class SIMPLANEURUE_API ASlopeFlightPawn : public APawn
 
 public:
     void StartFirstFlightTutorial();
+    void StartBungeeTutorial();
+    bool IsBungeeTutorialActive() const { return Tutorial.BungeeActive(); }
     void EndFirstFlightTutorial();
     bool IsTutorialActive() const { return Tutorial.Active(); }
     const FFirstFlightTutorial& TutorialStatus() const { return Tutorial; }
@@ -132,6 +134,9 @@ private:
     ValleyAir::FWeatherSettings TutorialPreviousWeather, TutorialWeather;
     FGliderDynamics TutorialPreviousFlight;
     FBungeeLaunch TutorialPreviousBungee;
+    FLaunchInstallations TutorialPreviousInstallations;
+    bool TutorialPreviousBungeeSelected=false;
+    int32 TutorialPreviousBungeeColour=0;
     int32 TutorialPreviousModel=0, TutorialPreviousPreview=0, TutorialPreviousSite=1, TutorialPreviousView=0, TutorialPreviousBungeeId=INDEX_NONE;
     FVector TutorialPreviousPilot=FVector::ZeroVector;
     FVector2D TutorialPreviousOffset=FVector2D::ZeroVector;
@@ -142,6 +147,10 @@ private:
     void UpdateFirstFlightTutorial(float Dt);
     void RecoverFirstFlightTutorial();
     void TestFirstFlightTutorial(float Elapsed);
+    void UpdateBungeeTutorial(float Dt);
+    void RecoverBungeeTutorial();
+    bool BungeeTutorialReady() const;
+    void TestBungeeTutorial(float Elapsed);
     bool bF3FProof=false;
     void TestF3F(float Elapsed);
     FF3FCourse F3FCircuit, F3FDraft;

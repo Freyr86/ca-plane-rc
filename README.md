@@ -12,6 +12,8 @@ Le bouton **Signaler un problème** est accessible depuis les réglages, le lanc
 
 Le **roulis du K3600** est corrigé : ses ailerons et leur trim sont désormais actifs indépendamment de la dérive. [Détails de la correction et référence du modèle](docs/reference-aircraft/K3600.md).
 
+Le nouveau tutoriel **TUTO → Utiliser l’élastique** accompagne le lancement de l’**APUS** sur la piste en herbe : pose de l’ancrage, déroulage, accrochage, tension avec une jauge, lancement, largage, récupération et rangement. Les repères guident le joueur et une reprise est proposée après un crash. [Parcours et vérifications](docs/TUTORIEL_ELASTIQUE.md).
+
 [Formulaire de signalement](https://ca-plane-assistance.endlessbow16.chatgpt.site/) · [Fonctionnement et vérifications](docs/COMPATIBILITE_ET_SIGNALEMENTS.md). La 0.5.9 est compilée localement ; le téléchargement public ci-dessus reste celui de la 0.5.8 jusqu'à publication de la nouvelle release.
 
 ## Nouveautés de la 0.5.8
@@ -71,6 +73,7 @@ Le projet reste un prototype : les réglages physiques sont affinés par compara
 ## Fonctionnalités
 
 - Tutoriel interactif **Mon 1er vol**, au chalet avec le Topy, du déplacement à pied à la récupération après l’atterrissage.
+- Tutoriel **Utiliser l’élastique**, sur la piste en herbe avec l’APUS, de l’installation au rangement de la ligne.
 - Neuf appareils au hangar, du Snipe 2 de lancer main au Jonker JS-3 de 9 m. Le Flight-Composites Nubis de 5,95 m dispose de volets et d’aérofreins indépendants.
 - Radio USB (notamment TX16S), affectations personnalisées et pilotage clavier.
 - Masse, centrage avec silhouette interactive, force des commandes de −500 à +500 % par modèle.

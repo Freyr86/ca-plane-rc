@@ -303,7 +303,7 @@ void ASlopeFlightPawn::BeginPlay()
         ASlopeWorld::TerrainHeightCm(ASlopeWorld::PilotX,ASlopeWorld::PilotY));
     bSmokeMode = FParse::Param(FCommandLine::Get(), TEXT("SimSmoke"));
     bBungeeProof = FParse::Param(FCommandLine::Get(), TEXT("BungeeProof"));
-    bTutorialProof = bSmokeMode && FParse::Param(FCommandLine::Get(), TEXT("TutorialProof"));
+    bTutorialProof = bSmokeMode && (FParse::Param(FCommandLine::Get(), TEXT("TutorialProof")) || FParse::Param(FCommandLine::Get(), TEXT("BungeeTutorialProof")));
     bWinchProof = FParse::Param(FCommandLine::Get(), TEXT("WinchProof"));
     bLandingProof = FParse::Param(FCommandLine::Get(), TEXT("LandingProof"));
     bPilotProof = FParse::Param(FCommandLine::Get(), TEXT("PilotProof"));
@@ -578,8 +578,9 @@ void ASlopeFlightPawn::ReadControls(float DeltaSeconds)
     Rudder = Radio.IsDriving() ? TargetRudder : FMath::FInterpConstantTo(Rudder, TargetRudder, DeltaSeconds, 3.0f);
     if(Tutorial.Step==EFirstFlightStep::Controls)
         Tutorial.ObserveControls(Radio.Command(AileronSteering[SelectedModel]?A::Aileron:A::Rudder),Radio.Command(A::Elevator));
-    if (Radio.Pressed(A::Backpack) && (!IsTutorialActive() || Tutorial.Step==EFirstFlightStep::Launch || Tutorial.Step==EFirstFlightStep::Retrieve)) ToggleBackpack();
-    if (!IsTutorialActive() && Radio.Pressed(A::Equipment)) SelectBungee();
+    if (Radio.Pressed(A::Backpack) && (!IsTutorialActive() || Tutorial.Step==EFirstFlightStep::Launch || Tutorial.Step==EFirstFlightStep::Retrieve
+        || Tutorial.BungeeStep==EBungeeTutorialStep::Attach || Tutorial.BungeeStep==EBungeeTutorialStep::Retrieve)) ToggleBackpack();
+    if ((!IsTutorialActive() || IsBungeeTutorialActive()) && Radio.Pressed(A::Equipment)) SelectBungee();
     if (!IsTutorialActive() && Radio.Pressed(A::Winch)) SelectLaunchEquipment(ELaunchEquipment::Winch);
     if (Bungee.State == FBungeeLaunch::EState::Towing && (Radio.Pressed(A::TowRelease) || PlayerController->WasInputKeyJustPressed(EKeys::E))) Bungee.Release();
     if (Radio.Pressed(A::Relaunch))
@@ -944,8 +945,10 @@ FTransform ASlopeFlightPawn::HandPose(float Progress) const
 
 void ASlopeFlightPawn::BeginHandLaunch()
 {
-    if(IsTutorialActive() && Tutorial.Step!=EFirstFlightStep::Launch) return;
-    if(IsTutorialActive() && (FVector::Dist2D(PilotPosition(),Tutorial.LaunchPoint)>2000.
+    if(IsBungeeTutorialActive() && (Tutorial.BungeeStep!=EBungeeTutorialStep::Launch || !BungeeTutorialReady()))
+    { SiteNotice=TEXT("Tuto : accroche le planeur, ajuste la tension et oriente-toi vers l’ancrage."); return; }
+    if(IsTutorialActive() && !IsBungeeTutorialActive() && Tutorial.Step!=EFirstFlightStep::Launch) return;
+    if(IsTutorialActive() && !IsBungeeTutorialActive() && (FVector::Dist2D(PilotPosition(),Tutorial.LaunchPoint)>2000.
         || FMath::Abs(FMath::FindDeltaAngleDegrees(LaunchHeading,TutorialHeading))>60.f))
     { SiteNotice=TEXT("Tuto : rejoins le départ et regarde face au vent indiqué par la boussole."); return; }
     if (!bModelReady || !bAppearanceReady || bMenuOpen || !bHeldForLaunch || bInBackpack || IsThrowing()) return;
@@ -1110,7 +1113,7 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
         else Menu->UpdateStartupPoster();
     }
     else if (!bContactProof && !bBungeeProof && !bWinchProof && !bLandingProof && !bPilotProof && !bCirqueProof && !bWeatherProof && !bF3FProof && !bTutorialProof) ReadControls(DeltaSeconds);
-    if(!IsTutorialActive()) UpdateEquipment(DeltaSeconds);
+    if(!IsTutorialActive() || IsBungeeTutorialActive()) UpdateEquipment(DeltaSeconds);
     UpdateF3F(DeltaSeconds);
     AdvanceFlight(DeltaSeconds);
     UpdateFirstFlightTutorial(DeltaSeconds);
@@ -1135,7 +1138,12 @@ void ASlopeFlightPawn::Tick(float DeltaSeconds)
     if (bSmokeMode || bCaptureSite)
     {
         SmokeElapsed += DeltaSeconds;
-        if (bTutorialProof) { TestFirstFlightTutorial(SmokeElapsed); return; }
+        if (bTutorialProof)
+        {
+            if(FParse::Param(FCommandLine::Get(),TEXT("BungeeTutorialProof"))) TestBungeeTutorial(SmokeElapsed);
+            else TestFirstFlightTutorial(SmokeElapsed);
+            return;
+        }
         if (bBungeeProof) { TestBungee(SmokeElapsed); return; }
         if (bWinchProof) { TestWinch(SmokeElapsed); return; }
         if (bLandingProof) { TestLanding(SmokeElapsed); return; }

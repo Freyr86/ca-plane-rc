@@ -32,7 +32,51 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
     auto Shortcut=[&](EGliderControl A){const FString Key=Plane.Radio.Shortcut(A); return A==EGliderControl::Menu && Key==TEXT("Libre")?FString(TEXT("Échap")):Key;};
     FString Heading, Body;
     int Step=1;
-    switch(T.Step)
+    const bool BungeeLesson=T.BungeeActive();
+    const int StepCount=BungeeLesson?11:9;
+    if(BungeeLesson)
+    {
+        using B=EBungeeTutorialStep;
+        Step=int(T.BungeeStep);
+        switch(T.BungeeStep)
+        {
+        case B::Select:
+            Heading=TEXT("Prépare l’élastique");
+            Body=TEXT("L’APUS est dans ton sac, sur la piste en herbe. Le vent vient de l’ancrage indiqué. Appuie sur ")+Shortcut(EGliderControl::Equipment)+TEXT(" pour sélectionner l’élastique. L’installation de cette leçon est temporaire."); break;
+        case B::Anchor:
+            Heading=TEXT("Pose l’ancrage");
+            Body=TEXT("Regarde le sol près du repère doré. Le repère de pose doit être vert. Appuie brièvement sur E pour fixer l’ancrage sur le sol dégagé."); break;
+        case B::Layout:
+            Heading=TEXT("Déroule la ligne");
+            Body=TEXT("Éloigne-toi de l’ancrage vers le repère de départ, à environ 30 m. ZQSD / WASD pour marcher, Maj pour courir. Appuie brièvement sur E pour poser le départ. La ligne reste détendue : tu la tendras avec le planeur accroché."); break;
+        case B::Attach:
+            Heading=TEXT("Accroche le planeur");
+            Body=TEXT("Rejoins le départ posé. Appuie brièvement sur E, ou sur ")+Shortcut(EGliderControl::Backpack)+TEXT(" pour sortir l’APUS et l’accrocher. Tu dois être près du départ ; la ligne rejoint alors le planeur."); break;
+        case B::Tension:
+            Heading=TEXT("Recule pour tendre");
+            Body=TEXT("Regarde vers l’ancrage et recule vers le repère doré. Vise la zone verte : une traction entre 2 et 4 fois le poids de l’APUS. Trop tendu ? Avance un peu. Reste dans l’axe de la ligne, face au vent."); break;
+        case B::Launch:
+            Heading=TEXT("Prêt pour le départ");
+            Body=TEXT("La tension et l’orientation sont bonnes. Garde le planeur dirigé vers l’ancrage et appuie sur ")+Shortcut(EGliderControl::HandLaunch)+TEXT(". Accompagne ensuite la montée avec une petite action à cabrer, sans tirer brusquement."); break;
+        case B::Tow:
+            Heading=TEXT("Accompagne la montée");
+            Body=TEXT("Garde les ailes à plat avec les ailerons et cabre doucement. L’APUS n’a pas de dérive mobile. Appuie sur ")+Shortcut(EGliderControl::TowRelease)+TEXT(" pour larguer ; E fonctionne aussi. La ligne se libère aussi automatiquement en se détendant ou à l’angle de largage."); break;
+        case B::Glide:
+            Heading=TEXT("La ligne est libérée");
+            Body=TEXT("Reprends une assiette de vol normale et conserve de la vitesse. Fais une approche large sur la piste, puis arrondis près du sol. Il n’y a pas de durée de vol imposée dans cette leçon."); break;
+        case B::Retrieve:
+            Heading=T.bRoughLanding?TEXT("Posé un peu ferme"):TEXT("Récupère ton planeur");
+            Body=TEXT("Rejoins l’APUS à pied et appuie sur ")+Shortcut(EGliderControl::Backpack)+TEXT(" à proximité pour le ranger dans le sac. Maj permet de courir. Il reste ensuite à ranger la ligne."); break;
+        case B::Pack:
+            Heading=TEXT("Range l’installation");
+            Body=TEXT("Rejoins le repère du départ ou l’ancrage. Maintiens E une seconde pour ranger l’élastique et sa ligne. Un appui bref sert à accrocher ; un appui long sert à ranger."); break;
+        case B::Complete:
+            Heading=TEXT("Lancement à l’élastique réussi !");
+            Body=TEXT("Tu sais poser l’installation, accrocher, ajuster la tension, lancer, larguer et tout ranger. Ouvre Tuto pour recommencer ou quitter la leçon et retrouver tes réglages et tes installations."); break;
+        default: return;
+        }
+    }
+    else switch(T.Step)
     {
     case S::Walk:
         Heading=TEXT("Rejoins le départ");
@@ -81,7 +125,7 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
         Heading=T.bCrashed?TEXT("Oups, on réessaie ?"):TEXT("Oh non, on l’a perdu de vue !");
         Body=T.bCrashed ? TEXT("Ce vol s’arrête ici, mais ce n’est pas grave ! ")
             : TEXT("Le planeur est hors de vue depuis un moment. Pas de souci ! ");
-        Body+=Shortcut(EGliderControl::Relaunch)+TEXT(" : récupère le Topy au départ et recommence. Ton temps de vol est conservé.");
+        Body+=Shortcut(EGliderControl::Relaunch)+(BungeeLesson?TEXT(" : récupère l’APUS au départ, accroche-le et réessaie. Ton installation reste en place."):TEXT(" : récupère le Topy au départ et recommence. Ton temps de vol est conservé."));
     }
     if(T.Step==S::Launch) Body+=FString::Printf(TEXT(" Cap conseillé : %03d° (nord = 000°)."),FMath::RoundToInt(ValleyAir::Settings().WindFromDegrees)%360);
 
@@ -100,8 +144,9 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
     if(!Line.IsEmpty()) Lines.Add(Line);
     const bool Controls=T.Step==S::Controls && !T.bRecoveryNeeded;
     const bool Flight=(T.Step==S::Fly || T.Step==S::Landing || T.bRecoveryNeeded);
+    const bool Tension=BungeeLesson && (T.BungeeStep==EBungeeTutorialStep::Tension || T.BungeeStep==EBungeeTutorialStep::Launch);
     const float BodyBottom=Y+(79+Lines.Num()*19)*Scale;
-    const float Footer=BodyBottom+(Controls?139:Flight?41:6)*Scale;
+    const float Footer=BodyBottom+(Controls?139:(Flight && !BungeeLesson)||Tension?41:6)*Scale;
     const float Height=Footer-Y+31*Scale;
 
     // Project only a real visible world point. Never mirror a target behind the
@@ -110,7 +155,17 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
     FString TargetName;
     if(!T.bRecoveryNeeded)
     {
-        if(T.Step==S::Walk || T.Step==S::Launch) {Target=T.Step==S::Walk?T.WalkTarget:T.LaunchPoint; TargetName=TEXT("Départ");}
+        using B=EBungeeTutorialStep;
+        if(BungeeLesson)
+        {
+            if(T.BungeeStep==B::Select || T.BungeeStep==B::Anchor) { Target=T.BungeeAnchorTarget; TargetName=TEXT("Ancrage"); }
+            if(T.BungeeStep==B::Layout) { Target=T.BungeeDepartureTarget; TargetName=TEXT("Départ à poser"); }
+            if(T.BungeeStep==B::Attach || T.BungeeStep==B::Pack) { Target=Plane.BungeeStatus().Departure; TargetName=TEXT("Départ"); }
+            if(T.BungeeStep==B::Tension) { Target=T.LaunchPoint; TargetName=TEXT("Zone de tension"); }
+            if(T.BungeeStep==B::Launch) { Target=Plane.BungeeStatus().Anchor; TargetName=TEXT("Face à l’ancrage"); }
+            if(T.BungeeStep==B::Retrieve) { Target=Plane.GetActorLocation(); TargetName=TEXT("Ton APUS"); }
+        }
+        else if(T.Step==S::Walk || T.Step==S::Launch) {Target=T.Step==S::Walk?T.WalkTarget:T.LaunchPoint; TargetName=TEXT("Départ");}
         else if(T.Step==S::Windsock) {Target=T.WindsockTarget; TargetName=TEXT("Manche à air");}
         else if(T.Step==S::Landing) {Target=T.LandingTarget; TargetName=TEXT("Zone conseillée");}
         else if(T.Step==S::Retrieve) {Target=Plane.GetActorLocation(); TargetName=TEXT("Ton Topy");}
@@ -183,9 +238,10 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
 
     DrawRect(Ink,X,Y,Width,Height);
     DrawRect(T.bRecoveryNeeded?Coral:Gold,X,Y,3*Scale,Height);
-    Text(TEXT("TUTO  /  MON 1ER VOL"),X+16*Scale,Y+10*Scale,12,Gold,TEXT("BoldItalic"));
-    Text(FString::Printf(TEXT("%02d / 09"),Step),X+Width-67*Scale,Y+10*Scale,11,Paper,TEXT("Bold"));
-    for(int I=0;I<9;++I) DrawRect(I<Step?Gold:FLinearColor(.08f,.20f,.19f),X+(16+I*35)*Scale,Y+34*Scale,29*Scale,2*Scale);
+    Text(BungeeLesson?TEXT("TUTO  /  ÉLASTIQUE"):TEXT("TUTO  /  MON 1ER VOL"),X+16*Scale,Y+10*Scale,12,Gold,TEXT("BoldItalic"));
+    Text(FString::Printf(TEXT("%02d / %02d"),Step,StepCount),X+Width-67*Scale,Y+10*Scale,11,Paper,TEXT("Bold"));
+    const float SegmentWidth=(Width-32*Scale)/StepCount;
+    for(int I=0;I<StepCount;++I) DrawRect(I<Step?Gold:FLinearColor(.08f,.20f,.19f),X+16*Scale+I*SegmentWidth,Y+34*Scale,SegmentWidth-5*Scale,2*Scale);
     Text(Heading,X+16*Scale,Y+46*Scale,15,Paper,TEXT("BoldItalic"),Width-32*Scale);
     for(int I=0;I<Lines.Num();++I) Text(Lines[I],X+16*Scale,Y+(77+I*19)*Scale,12,Paper,TEXT("Regular"),Width-32*Scale);
 
@@ -208,7 +264,16 @@ void ASimPlaneurHUD::DrawFirstFlightTutorial(const ASlopeFlightPawn& Plane)
         Bar(2,TEXT("DIRECTION"),T.Rudder,TEXT("Gauche"),TEXT("Droite"),T.RudderLeft,T.RudderRight);
         Bar(67,TEXT("PROFONDEUR"),T.Elevator,TEXT("Cabrer"),TEXT("Piquer"),T.ElevatorUp,T.ElevatorDown);
     }
-    else if(Flight)
+    else if(Tension)
+    {
+        // This lesson uses the aircraft's standard loading without saving it.
+        const float Ratio=Plane.BungeeTension()/FMath::Max(.01,Plane.StandardLoading().MassGrams*.001*9.80665);
+        const float W=Width-32*Scale, BX=X+16*Scale, BY=BodyBottom+26*Scale;
+        Text(FString::Printf(TEXT("TRACTION  %.1f × le poids · cible 2 à 4"),Ratio),BX,BodyBottom+3*Scale,11,Gold,TEXT("Bold"),W);
+        DrawRect(Soft,BX,BY,W,5*Scale); DrawRect(Valid,BX+W/3,BY,W/3,5*Scale);
+        DrawRect(Ratio>4?Coral:Paper,BX+W*FMath::Clamp(Ratio/6.f,0.f,1.f)-2*Scale,BY-4*Scale,4*Scale,13*Scale);
+    }
+    else if(Flight && !BungeeLesson)
     {
         const int Seconds=FMath::Clamp(FMath::FloorToInt(T.FlightSeconds),0,150);
         Text(FString::Printf(TEXT("TEMPS DE VOL  %d:%02d / 2:30%s"),Seconds/60,Seconds%60,T.bRecoveryNeeded?TEXT(" · EN PAUSE"):TEXT("")),

@@ -63,6 +63,8 @@ void ASlopeFlightPawn::SaveBungee()
             EquipmentConfirmationUntil=FPlatformTime::Seconds()+7.;
         }
     }
+    // Lesson equipment belongs only to this session, never the saved world.
+    if(IsBungeeTutorialActive()) { SyncWinchStations(); return; }
     // Mark the legacy single-installation save as migrated, even after packing
     // the last installation: an old anchor must never reappear on restart.
     GConfig->SetBool(Settings,TEXT("Installed"),false,GGameUserSettingsIni);
@@ -163,6 +165,7 @@ void ASlopeFlightPawn::SelectBungee()
 
 void ASlopeFlightPawn::SelectLaunchEquipment(ELaunchEquipment Type)
 {
+    if(IsBungeeTutorialActive() && (Type!=ELaunchEquipment::Bungee || Tutorial.BungeeStep!=EBungeeTutorialStep::Select)) return;
     if (!IsWalking()) { SiteNotice = TEXT("Reviens au sol pour préparer le matériel."); return; }
     F3FRun.Invalidate(TEXT("Changement de matériel"));
     bF3FEnabled=false; F3FPlacement=0;
@@ -316,6 +319,16 @@ FString ASlopeFlightPawn::EquipmentPrompt() const
 
 void ASlopeFlightPawn::InteractEquipment(bool Pack)
 {
+    if(IsBungeeTutorialActive())
+    {
+        using S=EBungeeTutorialStep;
+        const auto Step=Tutorial.BungeeStep;
+        if(Pack ? Step!=S::Pack : !(Step==S::Anchor || Step==S::Layout || Step==S::Attach || Step==S::Tension || Step==S::Launch)) return;
+        if(!Pack && Step==S::Anchor && FVector::Dist2D(PlacementPoint,Tutorial.BungeeAnchorTarget)>500.)
+        { SiteNotice=TEXT("Tuto : pose l’ancrage près du repère doré."); return; }
+        if(!Pack && Step==S::Layout && FVector::Dist2D(PilotPosition(),Tutorial.BungeeDepartureTarget)>300.)
+        { SiteNotice=TEXT("Tuto : rejoins le repère de départ pour poser la ligne détendue."); return; }
+    }
     if (!IsWalking() || IsThrowing()) return;
     if (Pack)
     {

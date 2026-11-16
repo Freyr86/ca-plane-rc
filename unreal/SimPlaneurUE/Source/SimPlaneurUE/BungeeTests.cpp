@@ -1,5 +1,6 @@
 #include "BungeeLaunch.h"
 #include "GliderDynamics.h"
+#include "Misc/Paths.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 
@@ -35,8 +36,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBungeeFlightTest,"SimPlaneur.Physics.BungeeFli
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FBungeeFlightTest::RunTest(const FString&)
 {
+    for(const TCHAR* ModelName : {TEXT("Topy4522"),TEXT("Apus4")})
+    {
     FGliderDynamics Glider;
-    if(!TestTrue(TEXT("Load Topy"),Glider.LoadModel(Glider.TopyModelPath()))) return false;
+    if(!TestTrue(TEXT("Load bungee aircraft"),Glider.LoadModel(FPaths::ProjectContentDir()/TEXT("FlightModels")/(FString(ModelName)+TEXT(".json"))))) return false;
     FBungeeLaunch B;
     B.PlaceAnchor(FVector(0,0,10000));
     B.SetDeparture(FVector(-7000,0,10000),Glider.Loading().MassGrams*.001);
@@ -57,10 +60,11 @@ bool FBungeeFlightTest::RunTest(const FString&)
         Peak=FMath::Max(Peak,Glider.Altitude());
         if(I==60) TestTrue(TEXT("Tow accelerates aircraft"),Glider.Airspeed()>Free.Airspeed()+2.);
     }
-    AddInfo(FString::Printf(TEXT("Bungee peak %.1f m above launch, released %d"),Peak-101.45,Released));
+    AddInfo(FString::Printf(TEXT("Bungee %s peak %.1f m above launch, released %d"),ModelName,Peak-101.45,Released));
     TestTrue(TEXT("Tow produces climb"),Peak>106.45);
     TestTrue(TEXT("Cable slackens after climb"),Released);
     TestFalse(TEXT("Flight remains finite"),Glider.WorldPose().ContainsNaN());
-    return true;
+    }
+    return !HasAnyErrors();
 }
 #endif

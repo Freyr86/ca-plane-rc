@@ -559,7 +559,7 @@ void SFlightMenu::Build()
     if (Page==EPage::Home) Home(*List);
     else
     {
-        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : Page==EPage::Tutorials ? TEXT("Mon 1er vol") : TEXT("Graphismes");
+        const FString Title=Page==EPage::Hangar ? TEXT("Le hangar") : Page==EPage::Map ? TEXT("Carte de la vallée") : Page==EPage::Devices ? TEXT("Périphériques") : Page==EPage::Weather ? TEXT("Météo") : Page==EPage::Vario ? TEXT("Vario sonore") : Page==EPage::Settings ? TEXT("Réglages") : Page==EPage::Credits ? TEXT("Crédits") : Page==EPage::Equipment ? TEXT("Matériel de lancement") : Page==EPage::Tutorials ? TEXT("Les tutoriels") : TEXT("Graphismes");
         Add(*List,Text(Page==EPage::Updates?TEXT("Mises à jour"):Title,27,Ink,TEXT("BoldItalic")),4);
         Add(*List,Line(Ink),10);
         if (Page==EPage::Hangar) Hangar(*List);
@@ -721,8 +721,8 @@ void SFlightMenu::Updates(SVerticalBox& List)
 
 void SFlightMenu::Tutorials(SVerticalBox& List)
 {
-    Add(List,Text(TEXT("TUTO  /  CHALET DU VERSANT"),11,MutedInk,TEXT("Bold")),8);
-    auto Intro=Text(TEXT("Prends tes repères au site 2, découvre le vent puis effectue ton premier vol avec le Topy. Une consigne à la fois, à ton rythme."),13,Ink);
+    Add(List,Text(TEXT("TUTO  /  APPRENDRE À TON RYTHME"),11,MutedInk,TEXT("Bold")),8);
+    auto Intro=Text(TEXT("Choisis ta leçon : ton premier vol au chalet avec le Topy, ou le lancement à l’élastique sur la piste en herbe avec l’APUS. Une consigne à la fois."),13,Ink);
     // The tutorial lives in the fixed 398-unit side panel. An explicit wrap
     // width gives its ScrollBox a correct multiline desired height on first layout.
     Intro->SetWrapTextAt(340.f);
@@ -730,16 +730,22 @@ void SFlightMenu::Tutorials(SVerticalBox& List)
 
     const bool Active=Plane->IsTutorialActive();
     if(Active)
-        Add(List,Button(TEXT("TutorialResume"),TEXT("Reprendre mon 1er vol"),[this]{Plane->Fly();},true),7);
-    auto Start=Button(TEXT("TutorialStart"),Active?TEXT("Recommencer le tutoriel"):TEXT("Commencer mon 1er vol"),
+        Add(List,Button(TEXT("TutorialResume"),TEXT("Reprendre la leçon en cours"),[this]{Plane->Fly();},true),7);
+    auto Start=Button(TEXT("TutorialStart"),Active && !Plane->IsBungeeTutorialActive()?TEXT("Recommencer mon 1er vol"):TEXT("Mon 1er vol"),
         [this]{Plane->StartFirstFlightTutorial();},!Active);
     Start->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
     Add(List,Start,7);
+    auto BungeeStart=Button(TEXT("BungeeTutorialStart"),Plane->IsBungeeTutorialActive()?TEXT("Recommencer l’élastique"):TEXT("Utiliser l’élastique"),[this]{Plane->StartBungeeTutorial();});
+    BungeeStart->SetEnabled(TAttribute<bool>::CreateLambda([this]{return Plane->IsFlightReady() && Plane->IsAppearanceReady();}));
+    Add(List,BungeeStart,7);
     if(Active)
         Add(List,Button(TEXT("TutorialExit"),TEXT("Quitter le tutoriel"),[this]{Plane->EndFirstFlightTutorial();Go(EPage::Home);}),7);
 
     Add(List,Line(Ink),11);
-    Add(List,Text(TEXT("LE PARCOURS"),11,MutedInk,TEXT("Bold")),8);
+    Add(List,Text(TEXT("L’ÉLASTIQUE  /  PISTE EN HERBE"),11,MutedInk,TEXT("Bold")),8);
+    auto BungeeIntro=Text(TEXT("Poser l’ancrage, dérouler la ligne, accrocher, régler la tension puis lancer et larguer. Après le posé, récupère le planeur et range la ligne. Tes installations habituelles restent intactes."),12,Ink);
+    BungeeIntro->SetWrapTextAt(340.f); Add(List,BungeeIntro,12);
+    Add(List,Text(TEXT("MON 1ER VOL  /  CHALET"),11,MutedInk,TEXT("Bold")),8);
     const TCHAR* Steps[]={
         TEXT("01  Rejoindre le repère à pied"),
         TEXT("02  Observer la manche à air"),

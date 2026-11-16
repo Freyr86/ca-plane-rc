@@ -27,6 +27,8 @@ void ASlopeFlightPawn::StartFirstFlightTutorial()
     TutorialPreviousHeading=LaunchHeading; TutorialPreviousPitch=WalkPitch; TutorialPreviousView=int32(FlightView);
     TutorialPreviousTrails=bShowWindTrails; TutorialPreviousF3F=bF3FEnabled;
     TutorialPreviousBungee=Bungee; TutorialPreviousBungeeId=ActiveBungeeId;
+    TutorialPreviousInstallations=LaunchInstallations;
+    TutorialPreviousBungeeSelected=bBungeeSelected; TutorialPreviousBungeeColour=BungeeColourIndex;
     Tutorial=FFirstFlightTutorial(); Tutorial.Go(EFirstFlightStep::Walk);
     Tutorial.WalkTarget=Tutorial.LaunchPoint=Target.ImpactPoint;
     Tutorial.WindsockTarget=Sock.ImpactPoint+FVector(0,0,370);
@@ -72,14 +74,20 @@ void ASlopeFlightPawn::EndFirstFlightTutorial()
     PilotSite=TutorialPreviousPilot; PilotOffset=TutorialPreviousOffset;
     LaunchHeading=TutorialPreviousHeading; WalkPitch=TutorialPreviousPitch;
     Bungee=TutorialPreviousBungee; ActiveBungeeId=TutorialPreviousBungeeId;
+    LaunchInstallations=TutorialPreviousInstallations;
+    bBungeeSelected=TutorialPreviousBungeeSelected; BungeeColourIndex=TutorialPreviousBungeeColour;
+    bInteractionStarted=false; InteractionSeconds=0.f;
+    EquipmentConfirmationText.Reset(); SyncWinchStations();
     bF3FEnabled=TutorialPreviousF3F;
     BuildFallbackTopy(); ResetFlight(); FlightView=EFlightView(TutorialPreviousView);
+    bBungeeSelected=TutorialPreviousBungeeSelected;
     bStartedFlight=false; SiteNotice.Reset();
 }
 
 void ASlopeFlightPawn::RecoverFirstFlightTutorial()
 {
     if(!IsTutorialActive()) return;
+    if(IsBungeeTutorialActive()) { RecoverBungeeTutorial(); return; }
     // No shortcut may bypass the ground introduction or the final retrieval.
     if(Tutorial.Step<EFirstFlightStep::Launch || Tutorial.Step==EFirstFlightStep::Complete) return;
     PilotSite=Tutorial.LaunchPoint; PilotOffset=FVector2D::ZeroVector;
@@ -96,6 +104,7 @@ void ASlopeFlightPawn::RecoverFirstFlightTutorial()
 
 void ASlopeFlightPawn::UpdateFirstFlightTutorial(float Dt)
 {
+    if(IsBungeeTutorialActive()) { UpdateBungeeTutorial(Dt); return; }
     using S=EFirstFlightStep;
     if(!IsTutorialActive() || bMenuOpen || !bAppearanceReady) return;
     Dt=FMath::Clamp(Dt,0.f,.1f);
