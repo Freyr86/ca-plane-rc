@@ -1,10 +1,10 @@
-﻿# Ça plane ! — simulateur de planeur RC
+# Ça plane ! — simulateur de planeur RC
 
 Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++ natif à 120 Hz. Le simulateur fonctionne sans service JSBSim externe.
 
-**Bêta v0.5.8 : centrage plus lisible, physique de vol retravaillée et mises à jour intégrées.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.8).
+**Bêta v0.5.9 : contrôle de compatibilité, signalements sans compte et tutoriel élastique avec l’APUS.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.9).
 
-## Prochaine version 0.5.9 — compatibilité et signalements
+## Nouveautés de la 0.5.9 — compatibilité, signalements et tutoriel APUS
 
 Un lanceur vérifie Windows, le processeur, la mémoire et les fonctions DirectX réellement disponibles avant de démarrer le moteur. Il explique les incompatibilités et propose un mode **DirectX 11 · graphismes réduits** lorsque la configuration le permet. Le contrôle ne garantit pas la fluidité sur toutes les cartes.
 
@@ -14,7 +14,9 @@ Le **roulis du K3600** est corrigé : ses ailerons et leur trim sont désormais 
 
 Le nouveau tutoriel **TUTO → Utiliser l’élastique** accompagne le lancement de l’**APUS** sur la piste en herbe : pose de l’ancrage, déroulage, accrochage, tension avec une jauge, lancement, largage, récupération et rangement. Les repères guident le joueur et une reprise est proposée après un crash. [Parcours et vérifications](docs/TUTORIEL_ELASTIQUE.md).
 
-[Formulaire de signalement](https://ca-plane-assistance.endlessbow16.chatgpt.site/) · [Fonctionnement et vérifications](docs/COMPATIBILITE_ET_SIGNALEMENTS.md). La 0.5.9 est compilée localement ; le téléchargement public ci-dessus reste celui de la 0.5.8 jusqu'à publication de la nouvelle release.
+[Formulaire de signalement](https://ca-plane-assistance.endlessbow16.chatgpt.site/) · [Fonctionnement et vérifications](docs/COMPATIBILITE_ET_SIGNALEMENTS.md). Depuis la 0.5.8, la mise à jour est proposée dans les réglages du simulateur après sa publication GitHub.
+
+[Dossier de préparation pour la communauté : nouveautés et captures](docs/communaute/v0.5.9/README.md).
 
 ## Nouveautés de la 0.5.8
 

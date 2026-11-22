@@ -23,6 +23,7 @@
 #include "Airfield.h"
 #include "CirqueSite.h"
 #include "SceneContact.h"
+#include "PilotMovement.h"
 #include "EngineUtils.h"
 #include "ValleyLandscape.h"
 #include "Camera/CameraTypes.h"
@@ -352,13 +353,13 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 && WingAudio && WingAudio->IsPlaying();
             SendKey(EKeys::SpaceBar,IE_Released);
             SendKey(EKeys::M,IE_Released);
-            SendKey(EKeys::C,IE_Pressed);
-            SendKey(EKeys::K,IE_Pressed);
+            SendKey(EKeys::F7,IE_Pressed);
+            SendKey(EKeys::F6,IE_Pressed);
             break;
         case 5:
             OK = !VarioEnabled() && !VarioAudio->IsPlaying() && Flight.MotorPowerWatts()==0 && MotorAudio && !MotorAudio->IsPlaying() && FlightView==EFlightView::Chase;
-            SendKey(EKeys::K,IE_Released);
-            SendKey(EKeys::C,IE_Released);
+            SendKey(EKeys::F6,IE_Released);
+            SendKey(EKeys::F7,IE_Released);
             CycleCamera();
             OK = OK && FlightView==EFlightView::Wide;
             CycleCamera();
@@ -370,12 +371,12 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
             OK = FlightView==EFlightView::FPV && View.Rotation.Equals(GetActorRotation(),.01)
                 && GetActorTransform().InverseTransformPosition(View.Location).X > 0. && View.FOV==90.f;
             Shot(TEXT("fpv-flight.png"));
-            SendKey(EKeys::C,IE_Pressed);
+            SendKey(EKeys::F7,IE_Pressed);
             break;
         }
         case 7:
             OK = FlightView==EFlightView::Ground;
-            SendKey(EKeys::C,IE_Released);
+            SendKey(EKeys::F7,IE_Released);
             FPlatformMisc::RequestExitWithStatus(false,OK ? 0 : 3);
             break;
         }
@@ -751,11 +752,11 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         case 41:
             OK=!IsHeldForLaunch() && !Flight.IsStopped() && ContactKind.IsNone();
             Shot(TEXT("hand-launch-flight.png"));
-            SendKey(EKeys::SpaceBar,IE_Released); SendKey(EKeys::R,IE_Pressed); break;
+            SendKey(EKeys::SpaceBar,IE_Released); SendKey(EKeys::F8,IE_Pressed); break;
         case 42:
             Shot(TEXT("launch-site.png"));
             OK=IsHeldForLaunch() && !IsThrowing() && ContactKind.IsNone();
-            SendKey(EKeys::R,IE_Released); MenuProofLocation=TargetPosition; break;
+            SendKey(EKeys::F8,IE_Released); MenuProofLocation=TargetPosition; break;
         case 43:
             OK=IsHeldForLaunch() && TargetPosition.Equals(MenuProofLocation,.01);
             OpenMenu(); break;
@@ -791,7 +792,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         case 48:
             OK=NoclipPosition.Equals(MenuProofCamera,.01) && Click(TEXT("Fly")) && IsNoclip();
             Shot(TEXT("noclip-exploration.png")); break;
-        case 49: SendKey(EKeys::N,IE_Pressed); break;
+        case 49: SendKey(EKeys::F12,IE_Pressed); break;
         case 50:
         {
             FMinimalViewInfo View;
@@ -802,12 +803,13 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 && FMath::Abs(FMath::FindDeltaAngleDegrees(View.Rotation.Yaw,NoclipRotation.Yaw))<.01
                 && TargetPosition.Equals(HandPose().GetLocation(),.01)
                 && !TargetPosition.Equals(MenuProofLocation,100.);
-            SendKey(EKeys::N,IE_Released);
+            SendKey(EKeys::F12,IE_Released);
             MenuProofLocation=TargetPosition;
             Shot(TEXT("relocated-site-ready.png")); break;
         }
         case 51:
             OK=IsWalking(); MenuProofCamera=PilotPosition(); MenuProofHeading=LaunchHeading; MenuProofPitch=WalkPitch;
+            MenuProofWeather=Elapsed;
             SendKey(EKeys::W,IE_Pressed);
             CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
                 nullptr,FInputDeviceId::CreateFromInternalId(0),EKeys::MouseX,100.f,.016f,1,FPlatformTime::Cycles64()));
@@ -818,11 +820,15 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         {
             FHitResult Ground;
             const double Walked=FVector2D(PilotPosition()-MenuProofCamera).Size();
-            OK=IsWalking() && Walked>50. && Walked<250.
+            const double Duration=Elapsed-MenuProofWeather;
+            // The walking speed is now 550 cm/s. Bound distance by the actual
+            // key-hold duration; frame-time clamping may reduce the movement.
+            const bool OnGround=FindPilotGround(PilotPosition(),Ground) && PilotPosition().Equals(Ground.ImpactPoint,.1);
+            OK=IsWalking() && Walked>50. && Walked<=PilotMovement::WalkSpeed*Duration+1.
                 && FMath::Abs(FMath::FindDeltaAngleDegrees(MenuProofHeading,LaunchHeading))>5.
                 && FMath::Abs(WalkPitch-MenuProofPitch)>2.
-                && FindPilotGround(PilotPosition(),Ground) && PilotPosition().Equals(Ground.ImpactPoint,.1);
-            UE_LOG(LogTemp,Display,TEXT("WALK_PROOF distance_cm=%.1f heading=%.1f pitch=%.1f"),Walked,LaunchHeading,WalkPitch);
+                && OnGround;
+            UE_LOG(LogTemp,Display,TEXT("WALK_PROOF distance_cm=%.1f duration_s=%.3f heading=%.1f pitch=%.1f grounded=%d"),Walked,Duration,LaunchHeading,WalkPitch,OnGround);
             SendKey(EKeys::W,IE_Released);
             MenuProofCamera=PilotPosition(); MenuProofLocation=TargetPosition;
             MenuProofHeading=LaunchHeading; MenuProofPitch=WalkPitch;
@@ -834,6 +840,7 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 && FVector::DotProduct(TargetPosition-MenuProofLocation,FRotator(0,LaunchHeading,0).Vector())>500.;
             SendKey(EKeys::SpaceBar,IE_Released);
             Shot(TEXT("relocated-site-flight.png"));
+            MenuProofWeather=Elapsed;
             SendKey(EKeys::W,IE_Pressed); SendKey(EKeys::L,IE_Pressed);
             CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
                 nullptr,FInputDeviceId::CreateFromInternalId(0),EKeys::MouseX,200.f,.016f,1,FPlatformTime::Cycles64()));
@@ -841,12 +848,24 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
                 nullptr,FInputDeviceId::CreateFromInternalId(0),EKeys::MouseY,-100.f,.016f,1,FPlatformTime::Cycles64()));
             break;
         case 54:
-            OK=!IsWalking() && PilotPosition().Equals(MenuProofCamera,.01)
+        {
+            // Walking in the ground camera is allowed while flying; mouse
+            // motion still leaves automatic aircraft tracking in control.
+            FHitResult Ground;
+            const double Walked=FVector::Dist2D(PilotPosition(),MenuProofCamera);
+            const double Duration=Elapsed-MenuProofWeather;
+            const bool OnGround=FindPilotGround(PilotPosition(),Ground) && PilotPosition().Equals(Ground.ImpactPoint,.1);
+            OK=CanWalkInFlight() && Walked>50. && Walked<=PilotMovement::FlightSpeed*Duration+1.
+                && OnGround
                 && LaunchHeading==MenuProofHeading && WalkPitch==MenuProofPitch;
-            SendKey(EKeys::W,IE_Released); SendKey(EKeys::L,IE_Released); SendKey(EKeys::R,IE_Pressed); break;
+            UE_LOG(LogTemp,Display,TEXT("WALK_FLIGHT_PROOF distance_cm=%.1f duration_s=%.3f grounded=%d"),Walked,Duration,OnGround);
+            MenuProofCamera=PilotPosition();
+            SendKey(EKeys::W,IE_Released); SendKey(EKeys::L,IE_Released); SendKey(EKeys::F8,IE_Pressed); break;
+        }
         case 55:
-            OK=IsWalking() && TargetPosition.Equals(MenuProofLocation,.01);
-            SendKey(EKeys::R,IE_Released); ToggleNoclip(); MenuProofCamera=PilotPosition(); break;
+            OK=IsWalking() && IsHeldForLaunch() && PilotPosition().Equals(MenuProofCamera,.01)
+                && TargetPosition.Equals(HandPose().GetLocation(),.01);
+            SendKey(EKeys::F8,IE_Released); ToggleNoclip(); MenuProofCamera=PilotPosition(); break;
         case 56:
             NoclipPosition=FVector(Valley::LakeX,Valley::LakeY,100000.);
             ToggleNoclip();

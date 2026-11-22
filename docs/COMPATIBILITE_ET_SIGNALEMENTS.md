@@ -8,7 +8,9 @@ Une fonction indispensable absente empêche le lancement et affiche une explicat
 
 Le contrôle indique une capacité de démarrage, pas une garantie de fluidité ou l'absence de tout problème de pilote. Un cas Windows 10 / i5-4670 / 16 Go / Intel HD 4600 a motivé le mode de secours ; cette machine précise n'a pas été testée. Il faut encore confronter ce mode au retour du joueur.
 
-Un diagnostic matériel minimal reste sur le PC dans `%LOCALAPPDATA%\CaPlaneRC\Diagnostics\compatibility.txt`. Le lanceur surveille le code de sortie du jeu et propose de préparer un rapport si le processus se termine en erreur. Une panne du lanceur lui-même ne peut pas être interceptée par ce mécanisme.
+Un diagnostic matériel minimal reste sur le PC dans `%LOCALAPPDATA%\CaPlaneRC\Diagnostics\compatibility.txt`. Le lanceur surveille directement le vrai processus `SimPlaneurUE/Binaries/Win64/SimPlaneurUE.exe` et propose de préparer un rapport s’il se termine en erreur. Le bootstrap à la racine peut renvoyer un succès même lorsque le moteur échoue ; il n’est donc pas utilisé pour ce suivi. Une panne du lanceur lui-même ne peut pas être interceptée par ce mécanisme.
+
+Le lanceur contrôle aussi les bibliothèques Microsoft Visual C++ x64. Si elles sont absentes, anciennes ou endommagées, le joueur peut choisir d’ouvrir le redistribuable fourni avec le jeu. L’installation affiche son interface Microsoft et peut demander une autorisation administrateur. Aucun téléchargement, lancement automatique en mode unattended ou redémarrage automatique de Windows n’est effectué.
 
 ## Envoyer et consulter un rapport
 
@@ -41,4 +43,10 @@ Les secrets `ADMIN_EMAIL` et `ANTISPAM_SECRET`, ainsi que `PUBLIC_ORIGIN`, sont 
 - Tests du service : consentement, filtrage du diagnostic, droits de lecture/modification, suivi limité au statut, répétition d'un envoi sans doublon, taille et quotas. L'émulateur Cloudflare local a parfois redémarré pendant un PATCH ; le test réessaie une seule fois ce message précis, sans masquer les erreurs applicatives.
 - En production : un ticket clairement nommé « TEST TECHNIQUE — formulaire sans compte » reçu via le navigateur ; lecture et modification anonymes refusées (403), tableau protégé par redirection vers la connexion (307). La gestion avec le compte réel du propriétaire reste à vérifier après sa connexion ; la logique propriétaire a été testée localement.
 
-La version publique du simulateur reste la 0.5.8 tant que la release GitHub 0.5.9 n'est pas publiée. Les mises à jour intégrées existantes découvriront la nouvelle version après cette publication. L'installateur local est `work/release/CaPlaneRC-0.5.9-Windows-Setup.exe` ; son empreinte est dans `work/release/SHA256SUMS.txt`.
+## Préparation de release du 22 novembre 2026
+
+La correction du suivi de processus a été vérifiée avec des programmes de test : succès, sortie 3 et code d’exception Windows, arguments contenant des espaces/guillemets et répertoire de travail installé. Les tests couvrent aussi les versions VC++ absente, ancienne, correspondante ou plus récente, ainsi que l’absence de redistribuable et l’interdiction de l’exécuter en mode unattended. L’installation réelle de VC++ sur un Windows qui en est dépourvu reste à vérifier.
+
+La compilation finale, le contrôle du lanceur et une installation avec identité de test séparée ont réussi. Les menus ont été parcourus jusqu’à `MENU_PROOF step=69 pass=1`, et le tutoriel APUS jusqu’à `BUNGEE_TUTORIAL_PROOF complete success=1`, via le lanceur. La désinstallation de test a également réussi. Les anciens raccourcis et attentes de vitesse de marche du scénario de contrôle ont été adaptés aux commandes actuelles. La version contenue dans le paquet a été contrôlée : 0.5.9.
+
+La recherche intégrée de la 0.5.8 découvre la 0.5.9 après sa publication GitHub. L'installateur local est `work/release/CaPlaneRC-0.5.9-Windows-Setup.exe` ; son empreinte est dans `work/release/SHA256SUMS.txt`.

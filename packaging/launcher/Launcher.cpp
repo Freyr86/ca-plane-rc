@@ -14,6 +14,8 @@
 #include <sstream>
 #include <iomanip>
 #include "Compatibility.h"
+#include "GameProcess.h"
+#include "RuntimePrerequisites.h"
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 using Microsoft::WRL::ComPtr;
@@ -39,13 +41,6 @@ std::wstring Encode(const std::string& s)
     for(unsigned char c:s) if((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_'||c=='.'||c=='~') o<<wchar_t(c);
     else o<<L'%'<<std::uppercase<<std::hex<<std::setw(2)<<std::setfill(L'0')<<int(c);
     return o.str();
-}
-std::wstring Quote(const std::wstring& s)
-{
-    // Windows CommandLineToArgvW escaping, including trailing backslashes.
-    std::wstring out=L"\""; size_t slash=0;
-    for(wchar_t c:s) {if(c==L'\\') {++slash;continue;} out.append(slash*(c==L'"'?2:1),L'\\'); slash=0; if(c==L'"') out+=L'\\';out+=c;}
-    out.append(slash*2,L'\\'); return out+L'"';
 }
 std::wstring Json(const std::wstring& s)
 {
@@ -151,13 +146,13 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int)
     auto dpi=reinterpret_cast<BOOL(WINAPI*)()>(GetProcAddress(GetModuleHandleW(L"user32.dll"),"SetProcessDPIAware"));if(dpi)dpi();
     int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);
     bool report=false,check=false,quiet=false;std::vector<std::wstring> forward;
-    for(int i=1;i<argc;++i) {std::wstring v=argv[i];if(v==L"--report")report=true;else if(v==L"--check")check=true;else {forward.push_back(v);if(v==L"-unattended")quiet=true;}}
+    for(int i=1;i<argc;++i) {std::wstring v=argv[i];if(v==L"--report")report=true;else if(v==L"--check")check=true;else {forward.push_back(v);if(_wcsicmp(v.c_str(),L"-unattended")==0)quiet=true;}}
     if(argv) LocalFree(argv);
     const auto root=Root();const auto version=Version(root);const auto m=Inspect();const auto a=CaPlane::Assess(m);const auto detail=Summary(m,version);
     SaveDiagnostic(detail);
     if(report) {Report(m,a,version,0);return 0;}
     if(check) {std::ofstream(root/L"compatibility-check.json",std::ios::binary)<<Utf8(Payload(m,a,version,0));return a.blocked?2:0;}
-    const auto game=root/L"SimPlaneurUE.exe";
+    const auto game=CaPlane::GameExecutable(root);
     if(!fs::exists(game)) {if(!quiet) MessageBoxW(nullptr,L"Le jeu est absent de ce dossier. Réinstaller Ça plane ! à partir de l’installateur officiel.",L"Installation incomplète",MB_OK|MB_ICONERROR);return 3;}
     bool low=false;
     if(!quiet)
@@ -174,7 +169,48 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int)
         if(choice==102){Report(m,a,version,0);return 0;}if(choice!=100&&choice!=101)return 0;low=choice==101;
     }
     else {if(a.blocked)return 2;low=a.normalAdapter<0;}
-    std::wstring cmd=Quote(game.wstring());
+    const auto redistributable=root/L"Engine"/L"Extras"/L"Redist"/L"en-us"/L"vc_redist.x64.exe";
+    const auto prerequisite=CaPlane::RuntimeNextAction(CaPlane::RuntimeReady(),quiet,fs::is_regular_file(redistributable));
+    if(prerequisite==CaPlane::RuntimeAction::StopUnattended) return ERROR_MOD_NOT_FOUND;
+    if(prerequisite!=CaPlane::RuntimeAction::Continue)
+    {
+        std::vector<TASKDIALOG_BUTTON> buttons;
+        if(prerequisite==CaPlane::RuntimeAction::OfferInstaller) buttons.push_back({103,L"Installer les prérequis Microsoft"});
+        buttons.push_back({102,L"Signaler un problème"});buttons.push_back({IDCANCEL,L"Fermer"});
+        const auto content=prerequisite==CaPlane::RuntimeAction::OfferInstaller
+            ?L"Le composant Microsoft Visual C++ x64 nécessaire au jeu est absent, trop ancien ou endommagé. Tu peux ouvrir l’installateur Microsoft fourni avec le jeu. Windows pourra demander une autorisation administrateur."
+            :L"Le composant Microsoft Visual C++ x64 nécessaire au jeu est absent, trop ancien ou endommagé, et son installateur manque dans ce dossier. Réinstalle Ça plane ! à partir de l’installateur officiel.";
+        const int choice=Dialog(L"Installer un prérequis Windows",content,detail,buttons,prerequisite==CaPlane::RuntimeAction::OfferInstaller?103:102);
+        if(choice==102) {Report(m,a,version,ERROR_MOD_NOT_FOUND);return ERROR_MOD_NOT_FOUND;}
+        if(choice!=103) return 0;
+        // Only this explicit user choice starts the bundled Microsoft installer.
+        // No download, quiet mode or automatic restart is requested.
+        SHELLEXECUTEINFOW install{};install.cbSize=sizeof(install);install.fMask=SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC;
+        install.lpVerb=L"open";install.lpFile=redistributable.c_str();install.lpParameters=L"/install /passive /norestart";
+        install.lpDirectory=root.c_str();install.nShow=SW_SHOWNORMAL;
+        DWORD result=0;
+        if(!ShellExecuteExW(&install)) result=GetLastError();
+        else if(!install.hProcess) result=ERROR_INVALID_HANDLE;
+        else
+        {
+            if(WaitForSingleObject(install.hProcess,INFINITE)==WAIT_FAILED || !GetExitCodeProcess(install.hProcess,&result)) result=GetLastError();
+            CloseHandle(install.hProcess);
+        }
+        if(result==ERROR_CANCELLED) return 0;
+        if(result==ERROR_SUCCESS_REBOOT_REQUIRED)
+        {
+            MessageBoxW(nullptr,L"Microsoft demande un redémarrage de Windows pour terminer l’installation. Redémarre ton ordinateur, puis relance Ça plane !.",L"Prérequis installés",MB_OK|MB_ICONINFORMATION);
+            return int(result);
+        }
+        // A compatible runtime installed concurrently is accepted as well.
+        if(!CaPlane::RuntimeReady())
+        {
+            if(result==0) result=ERROR_MOD_NOT_FOUND;
+            if(Dialog(L"Les prérequis ne sont pas prêts",L"L’installation des composants Microsoft n’a pas permis de démarrer le jeu. Code : "+std::to_wstring(result),detail,{{102,L"Signaler un problème"},{IDCANCEL,L"Fermer"}},102)==102) Report(m,a,version,result);
+            return int(result);
+        }
+    }
+    std::wstring cmd=CaPlane::QuoteArgument(game.wstring());
     // Preserve all test/user arguments; never silently bypass a requested RHI.
     bool explicitRhi=false;for(const auto& v:forward)if(v==L"-dx11"||v==L"-d3d11"||v==L"-dx12"||v==L"-d3d12"||v==L"-vulkan"||v==L"-nullrhi"||v==L"-NullRHI")explicitRhi=true;
     if(!explicitRhi)
@@ -185,13 +221,13 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int)
         // order may differ between this executable and the game's GPU exports.
         if(index>=0)cmd+=L" -gpupreference=2 -graphicsadapter="+std::to_wstring(m.adapters[index].index);
     }
-    for(const auto& v:forward)cmd+=L" "+Quote(v);
-    STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION child{};
-    if(!CreateProcessW(game.c_str(),cmd.data(),nullptr,nullptr,FALSE,0,nullptr,root.c_str(),&startup,&child))
+    for(const auto& v:forward)cmd+=L" "+CaPlane::QuoteArgument(v);
+    const auto result=CaPlane::RunGame(root,cmd);
+    if(result.error!=ERROR_SUCCESS)
     {
-        DWORD error=GetLastError();if(!quiet){Dialog(L"Le jeu n’a pas pu démarrer",L"Vérifier l’installation et les prérequis Windows. Code : "+std::to_wstring(error),detail,{{102,L"Signaler un problème"},{IDCANCEL,L"Fermer"}},102)==102?Report(m,a,version,error):void();}return int(error);
+        const DWORD error=result.error;if(!quiet){Dialog(L"Le jeu n’a pas pu démarrer",L"Vérifier l’installation et les prérequis Windows. Code : "+std::to_wstring(error),detail,{{102,L"Signaler un problème"},{IDCANCEL,L"Fermer"}},102)==102?Report(m,a,version,error):void();}return int(error);
     }
-    CloseHandle(child.hThread);WaitForSingleObject(child.hProcess,INFINITE);DWORD code=0;GetExitCodeProcess(child.hProcess,&code);CloseHandle(child.hProcess);
+    const DWORD code=result.exitCode;
     if(code!=0&&!quiet)
         if(Dialog(L"Le simulateur s’est arrêté avec une erreur",L"Tu peux envoyer un rapport sans compte. Le formulaire te permettra de vérifier les informations avant l’envoi. Code : "+std::to_wstring(code),detail,{{102,L"Préparer un rapport"},{IDCANCEL,L"Fermer"}},102)==102) Report(m,a,version,code);
     return int(code);

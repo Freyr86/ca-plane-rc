@@ -1,6 +1,19 @@
 ﻿# Idées de développement restantes
 
-Carnet de Ça plane ! · Mise à jour du 8 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité.
+Carnet de Ça plane ! · Mise à jour du 16 novembre 2026. Les idées sont regroupées par thème, sans ordre de priorité sauf la prochaine implémentation indiquée ci-dessous.
+
+## Prochaine implémentation — télécabine fixe
+
+Demande conservée le 16 novembre 2026. Ludovic fait une pause : reprendre ce chantier à son retour, sans commencer la réalisation pendant la pause.
+
+- **Gare de départ : X 212 m, Y −2797 m.**
+- **Gare d’arrivée : X 190 m, Y −3238 m.** Liaison d’environ 442 m horizontalement.
+- Aménager les deux gares, leurs plateformes et leurs accès, en les adaptant au relief.
+- Ajouter les pylônes, les câbles légèrement fléchis et une cabine. Installation entièrement fixe pour cette première version.
+- Vérifier la garde au sol, les collisions, l’intégration visuelle et compiler une version testable.
+- Estimation communiquée : **2 à 3 heures** pour un décor fixe soigné intégré et testé ; **4 à 6 heures** pour une finition très détaillée observable de près. La finition très détaillée n’a pas été choisie explicitement.
+
+État : possibilités techniques examinées en lecture seule ; aucun élément de télécabine créé. La hauteur et l’espacement des pylônes restent à déterminer d’après le relief. Le code existant fournit des éléments de construction réutilisables, mais aucun modèle dédié de télécabine n’a été identifié.
 
 ## Vol et multijoueur
 

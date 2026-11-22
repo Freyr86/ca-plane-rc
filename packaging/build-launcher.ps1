@@ -25,6 +25,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Compilation des tests de compatibilité impossible.' }
         & './CompatibilityTests.exe'
         if ($LASTEXITCODE -ne 0) { throw 'Échec des tests de compatibilité.' }
+        & $cl @common (Join-Path $PSScriptRoot 'launcher/GameProcessTests.cpp') '/Fe:GameProcessTests.exe' /link @libraries
+        if ($LASTEXITCODE -ne 0) { throw 'Compilation des tests du processus de jeu impossible.' }
+        & './GameProcessTests.exe'
+        if ($LASTEXITCODE -ne 0) { throw 'Échec des tests du processus de jeu.' }
     }
     & $cl @common (Join-Path $PSScriptRoot 'launcher/Launcher.cpp') '/Fe:CaPlaneRCLauncher.exe' /link @libraries /SUBSYSTEM:WINDOWS /MANIFEST:EMBED user32.lib shell32.lib ole32.lib comctl32.lib advapi32.lib dxgi.lib d3d11.lib
     if ($LASTEXITCODE -ne 0) { throw 'Compilation du lanceur impossible.' }
