@@ -2,7 +2,9 @@
 
 Prototype Windows de vol de pente sous Unreal Engine 5.8, avec moteur de vol C++ natif à 120 Hz. Le simulateur fonctionne sans service JSBSim externe.
 
-**Bêta v0.5.9 : contrôle de compatibilité, signalements sans compte et tutoriel élastique avec l’APUS.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.9).
+**Bêta v0.5.10 : hotfix de compatibilité graphique.** [Télécharger l’installeur Windows](https://github.com/Freyr86/ca-plane-rc/releases/tag/v0.5.10).
+
+Le mode DirectX 11 réduit limite désormais le rendu à 30 images/s, active la synchronisation verticale et conserve les préférences graphiques. Le lancement explicite en DirectX 11 bénéficie aussi de ces protections. La recherche de mises à jour reconnaît les futurs correctifs suffixés `-b`, `-c`, etc. [Détails et limites](docs/RELEASE_v0.5.10.md). Les nouveautés de développement sont prévues pour la 0.5.11.
 
 ## Nouveautés de la 0.5.9 — compatibilité, signalements et tutoriel APUS
 

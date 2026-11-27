@@ -14,6 +14,7 @@
 #include <sstream>
 #include <iomanip>
 #include "Compatibility.h"
+#include "LaunchOptions.h"
 #include "GameProcess.h"
 #include "RuntimePrerequisites.h"
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -98,8 +99,11 @@ fs::path Root()
 std::wstring Version(const fs::path& root)
 {
     std::ifstream f(root/L"CaPlaneRC-version.txt");std::string v; std::getline(f,v);
-    if(v.size()>30||v.find_first_not_of("0123456789.\r")!=std::string::npos) return L"inconnue";
-    while(!v.empty()&&v.back()=='\r')v.pop_back();return v.empty()?L"inconnue":Wide(v);
+    while(!v.empty()&&v.back()=='\r')v.pop_back();
+    auto core=v;
+    if(core.size()>2&&core[core.size()-2]=='-'&&core.back()>='a'&&core.back()<='z') core.resize(core.size()-2);
+    if(v.size()>30||core.empty()||core.find_first_not_of("0123456789.")!=std::string::npos) return L"inconnue";
+    return Wide(v);
 }
 std::wstring Summary(const CaPlane::Machine& m,const std::wstring& version)
 {
@@ -163,12 +167,12 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int)
         if(content.empty())content=L"Les fonctions nécessaires au lancement sont disponibles. Ce contrôle ne garantit pas la fluidité en jeu.";
         std::vector<TASKDIALOG_BUTTON> b;
         if(!a.blocked&&a.normalAdapter>=0)b.push_back({100,L"Lancer en DirectX 12"});
-        if(!a.blocked&&a.fallbackAdapter>=0)b.push_back({101,L"DirectX 11 · graphismes réduits"});
+        if(!a.blocked&&a.fallbackAdapter>=0)b.push_back({101,L"DirectX 11 · graphismes réduits · 30 images/s"});
         b.push_back({102,L"Signaler un problème"});b.push_back({IDCANCEL,L"Fermer"});
         int choice=Dialog(a.blocked?L"Cette configuration ne peut pas démarrer le jeu":a.recommendLow?L"Vérifier ces points avant de voler":L"Configuration vérifiée",content,detail,b,a.blocked?102:a.recommendLow&&a.fallbackAdapter>=0?101:100);
         if(choice==102){Report(m,a,version,0);return 0;}if(choice!=100&&choice!=101)return 0;low=choice==101;
     }
-    else {if(a.blocked)return 2;low=a.normalAdapter<0;}
+    else {if(a.blocked)return 2;low=a.fallbackAdapter>=0&&(a.recommendLow||a.normalAdapter<0);}
     const auto redistributable=root/L"Engine"/L"Extras"/L"Redist"/L"en-us"/L"vc_redist.x64.exe";
     const auto prerequisite=CaPlane::RuntimeNextAction(CaPlane::RuntimeReady(),quiet,fs::is_regular_file(redistributable));
     if(prerequisite==CaPlane::RuntimeAction::StopUnattended) return ERROR_MOD_NOT_FOUND;
@@ -211,17 +215,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int)
         }
     }
     std::wstring cmd=CaPlane::QuoteArgument(game.wstring());
-    // Preserve all test/user arguments; never silently bypass a requested RHI.
-    bool explicitRhi=false;for(const auto& v:forward)if(v==L"-dx11"||v==L"-d3d11"||v==L"-dx12"||v==L"-d3d12"||v==L"-vulkan"||v==L"-nullrhi"||v==L"-NullRHI")explicitRhi=true;
-    if(!explicitRhi)
-    {
-        const int index=low?a.fallbackAdapter:a.normalAdapter;
-        cmd+=low?L" -dx11 -CaPlaneLowSpec -windowed -ResX=1280 -ResY=720":L" -dx12";
-        // Match Unreal's explicit high-performance enumeration. Default DXGI
-        // order may differ between this executable and the game's GPU exports.
-        if(index>=0)cmd+=L" -gpupreference=2 -graphicsadapter="+std::to_wstring(m.adapters[index].index);
-    }
-    for(const auto& v:forward)cmd+=L" "+CaPlane::QuoteArgument(v);
+    for(const auto& v:CaPlane::LaunchOptions(m,a,low,forward))cmd+=L" "+CaPlane::QuoteArgument(v);
     const auto result=CaPlane::RunGame(root,cmd);
     if(result.error!=ERROR_SUCCESS)
     {

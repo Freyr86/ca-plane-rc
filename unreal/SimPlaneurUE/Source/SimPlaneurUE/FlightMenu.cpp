@@ -1,4 +1,5 @@
 #include "FlightMenu.h"
+#include "CompatibilityMode.h"
 #include "GameUpdater.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
@@ -1049,10 +1050,11 @@ void SFlightMenu::FindSizes()
 
 void SFlightMenu::Graphics(SVerticalBox& List)
 {
-    if(FParse::Param(FCommandLine::Get(),TEXT("CaPlaneLowSpec")))
+    if(CompatibilityMode::IsEnabled())
     {
-        auto Hint=Text(TEXT("Mode de compatibilité : graphismes réduits pour cette session. Les préférences enregistrées restent conservées tant que tu n’appliques pas de nouveaux réglages."),12,Rust);
+        auto Hint=Text(TEXT("Mode de compatibilité : graphismes réduits, 30 images/s maximum, synchronisation verticale activée et herbe à 20 m. Les réglages graphiques sont verrouillés pour cette session ; tes préférences sont conservées. Un lancement sans mode de compatibilité est nécessaire pour les modifier."),12,Rust);
         Hint->SetAutoWrapText(true);Add(List,Hint,12);
+        return;
     }
     if (ConfirmUntil>0.)
     {
@@ -1184,6 +1186,7 @@ void SFlightMenu::Weather(SVerticalBox& List)
 
 void SFlightMenu::Apply()
 {
+    if(CompatibilityMode::IsEnabled()) return;
     UGameUserSettings* G=GEngine->GetGameUserSettings();
     PreviousSize=G->GetScreenResolution();
     PreviousMode=G->GetFullscreenMode();
@@ -1197,6 +1200,7 @@ void SFlightMenu::Apply()
 
 void SFlightMenu::SaveGraphics()
 {
+    if(CompatibilityMode::IsEnabled()) return;
     UGameUserSettings* G=GEngine->GetGameUserSettings();
     ConfirmUntil=0.;
     if (Quality>=0 && Quality!=G->GetOverallScalabilityLevel()) G->SetOverallScalabilityLevel(Quality);

@@ -15,9 +15,11 @@ Cette fonction est intégrée à la bêta 0.5.8. Depuis la 0.5.7 ou une version 
 
 ## Contrat de publication
 
-Le client consulte les 100 dernières releases publiques de `Freyr86/ca-plane-rc`. Les bêtas sont incluses. Les versions sont comparées numériquement au format `vMAJEUR.MINEUR.CORRECTIF`. Brouillons, tags non conformes, exécutables d’un autre dépôt et fichiers sans empreinte SHA-256 sont ignorés. Une version identique ou plus ancienne n’est jamais proposée.
+À partir de la 0.5.10, un suffixe de maintenance d’une lettre minuscule `-a` à `-z` est accepté : `0.5.10 < 0.5.10-b < 0.5.10-c < 0.5.11`. Ce suffixe représente une révision de correctif, pas une préversion au sens SemVer. Les anciens clients 0.5.8/0.5.9 reconnaissent la 0.5.10 numérique ; ils ignorent encore les suffixes. Le nom de l’installateur reprend intégralement la version, par exemple `CaPlaneRC-0.5.10-b-Windows-Setup.exe`.
 
-Une release doit contenir `CaPlaneRC-X.Y.Z-Windows-Setup.exe` complètement téléversé ; son URL doit être celle de cette release dans le dépôt officiel. GitHub fournit l’empreinte dans `assets[].digest`. `SHA256SUMS.txt` reste utile pour les téléchargements manuels.
+Le client consulte les 100 dernières releases publiques de `Freyr86/ca-plane-rc`. Les bêtas sont incluses. Le cœur des versions est comparé numériquement au format `vMAJEUR.MINEUR.CORRECTIF`, puis le suffixe de maintenance éventuel est comparé par ordre alphabétique. Brouillons, tags non conformes, exécutables d’un autre dépôt et fichiers sans empreinte SHA-256 sont ignorés. Une version identique ou plus ancienne n’est jamais proposée.
+
+Une release doit contenir `CaPlaneRC-VERSION-Windows-Setup.exe` complètement téléversé, où `VERSION` reprend exactement le tag sans son `v` initial ; son URL doit être celle de cette release dans le dépôt officiel. GitHub fournit l’empreinte dans `assets[].digest`. `SHA256SUMS.txt` reste utile pour les téléchargements manuels.
 
 Les fichiers téléchargés résident dans le répertoire utilisateur `CaPlaneRC/Updates`. Une interruption peut laisser un fichier incomplet, remplacé lors d’une nouvelle tentative ; il ne peut pas être installé avant validation. Les anciens installateurs ne sont pas purgés automatiquement dans cette première version.
 

@@ -1,6 +1,8 @@
 #include "SlopeFlightPawn.h"
 #if !UE_BUILD_SHIPPING
 #include "FlightMenu.h"
+#include "CompatibilityMode.h"
+#include "HAL/IConsoleManager.h"
 #include "GameUpdater.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -67,6 +69,48 @@ void ASlopeFlightPawn::TestMenu(float Elapsed)
         CastChecked<APlayerController>(GetController())->InputKey(FInputKeyEventArgs(
             nullptr,FInputDeviceId::CreateFromInternalId(0),Input,Event,FPlatformTime::Cycles64()));
     };
+    if (FParse::Param(FCommandLine::Get(),TEXT("CompatibilityProof")))
+    {
+        auto Value=[](const TCHAR* Name){const auto* C=IConsoleManager::Get().FindConsoleVariable(Name);return C?C->GetFloat():-1.f;};
+        auto* Settings=GEngine->GetGameUserSettings();
+        // The fixture deliberately has cinematic quality, VSync off, unlimited
+        // FPS and a 500 m grass range saved. Recovery must not write over it.
+        bool OK=CompatibilityMode::IsEnabled() && Value(TEXT("t.MaxFPS"))==30.f
+            && Value(TEXT("r.VSync"))==1.f && Value(TEXT("r.VolumetricCloud"))==0.f
+            && Value(TEXT("sg.TextureQuality"))==0.f && Value(TEXT("r.Streaming.PoolSize"))==400.f
+            && Settings->GetOverallScalabilityLevel()==4 && !Settings->IsVSyncEnabled()
+            && Settings->GetFrameRateLimit()==0.f && ASlopeWorld::SavedGrassDistanceMeters()==20;
+        int32 SavedGrass=0;
+        GConfig->GetInt(TEXT("SimPlaneur.Graphics"),TEXT("GrassDistanceMeters"),SavedGrass,GGameUserSettingsIni);
+        OK &= SavedGrass==500;
+        switch(MenuProofStep)
+        {
+        case 0:
+            OK &= Click(TEXT("Settings")) && Click(TEXT("Graphics"));
+            OK &= !FindTagged(Menu.ToSharedRef(),TEXT("Apply")).IsValid();
+            break;
+        case 1:
+        {
+            // The updater uses this same save path before an installation.
+            Settings->SaveSettings();
+            int32 SavedQuality=-1;
+            GConfig->GetInt(TEXT("ScalabilityGroups"),TEXT("sg.TextureQuality"),SavedQuality,GGameUserSettingsIni);
+            OK &= SavedQuality==4;
+            Shot(TEXT("compatibility-graphics.png"));
+            break;
+        }
+        case 2: OK &= Click(TEXT("Back")) && Click(TEXT("Fly")); break;
+        case 3:
+            if(OK && Elapsed<185.f) return;
+            UE_LOG(LogTemp,Display,TEXT("COMPATIBILITY_PROOF complete success=%d elapsed=%.1f settings_preserved=%d"),OK,Elapsed,OK);
+            FPlatformMisc::RequestExitWithStatus(false,OK?0:3);
+            break;
+        }
+        UE_LOG(LogTemp,Display,TEXT("COMPATIBILITY_PROOF step=%d pass=%d"),MenuProofStep,OK);
+        if(!OK) FPlatformMisc::RequestExitWithStatus(false,3);
+        ++MenuProofStep;
+        return;
+    }
     if (FParse::Param(FCommandLine::Get(),TEXT("CgUIProof")))
     {
         bool OK=true;

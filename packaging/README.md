@@ -10,7 +10,7 @@ Installer Unreal Engine 5.8, Visual Studio Build Tools C++ et Inno Setup 6, puis
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File packaging/build-installer.ps1
 ```
 
-`-EngineRoot` permet de choisir une autre installation du moteur. `-SkipPackage` réutilise un jeu déjà compilé dans `work/package/Windows`. `-Version` change le numéro de l’installateur.
+`-EngineRoot` permet de choisir une autre installation du moteur. `-SkipPackage` réutilise un jeu déjà compilé dans `work/package/Windows`. `-Version` choisit le numéro de l’installateur et doit correspondre au `ProjectVersion` de `DefaultGame.ini`. Les correctifs suffixés `-a` à `-z` sont acceptés ; `0.5.10-b` reçoit le numéro de fichier Windows `0.5.10.2`. Recompiler le jeu avec cette même version avant de publier un correctif.
 
 Résultats dans `work/release` : un programme d’installation et `SHA256SUMS.txt`. Les fichiers générés, les caches et les outils locaux ne sont pas versionnés.
 

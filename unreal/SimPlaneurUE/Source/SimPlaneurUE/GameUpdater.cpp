@@ -20,9 +20,18 @@
 namespace
 {
     const FString DownloadRoot=TEXT("https://github.com/Freyr86/ca-plane-rc/releases/download/");
-    bool VersionParts(FString Text,FIntVector& V)
+    bool VersionParts(FString Text,FIntVector& V,int32& Revision)
     {
         Text.RemoveFromStart(TEXT("v"));
+        Revision=0;
+        int32 Suffix=INDEX_NONE;
+        if(Text.FindChar('-',Suffix))
+        {
+            // A single lowercase letter denotes a maintenance revision.
+            if(Suffix!=Text.Len()-2 || Text[Suffix+1]<'a' || Text[Suffix+1]>'z') return false;
+            Revision=Text[Suffix+1]-'a'+1;
+            Text.LeftInline(Suffix);
+        }
         TArray<FString> Parts; Text.ParseIntoArray(Parts,TEXT("."),false);
         if(Parts.Num()!=3) return false;
         for(int32 I=0;I<3;++I)
@@ -50,9 +59,9 @@ namespace
 
 bool FGameUpdater::Newer(const FString& Candidate,const FString& Installed)
 {
-    FIntVector A,B;
-    if(!VersionParts(Candidate,A) || !VersionParts(Installed,B)) return false;
-    return A.X!=B.X?A.X>B.X:A.Y!=B.Y?A.Y>B.Y:A.Z>B.Z;
+    FIntVector A,B; int32 RevisionA=0,RevisionB=0;
+    if(!VersionParts(Candidate,A,RevisionA) || !VersionParts(Installed,B,RevisionB)) return false;
+    return A.X!=B.X?A.X>B.X:A.Y!=B.Y?A.Y>B.Y:A.Z!=B.Z?A.Z>B.Z:RevisionA>RevisionB;
 }
 
 bool FGameUpdater::SelectRelease(const FString& Json,const FString& Installed,FGameRelease& Out)

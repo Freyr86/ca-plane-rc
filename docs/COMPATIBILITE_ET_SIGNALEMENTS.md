@@ -1,5 +1,9 @@
 # Compatibilité et signalements — version 0.5.9
 
+## Hotfix 0.5.10
+
+Le mode DirectX 11 réduit ajoute un plafond de 30 images/s, la synchronisation verticale et un budget de textures de 400 Mo. Un lancement avec `-dx11` ne contourne plus ce profil ni la sélection de la carte. Les réglages graphiques restent verrouillés pendant cette session et leur sauvegarde, y compris avant une mise à jour, conserve les préférences habituelles. [Notes et limites du correctif](RELEASE_v0.5.10.md).
+
 ## Avant de lancer le simulateur
 
 Les raccourcis de l'installateur ouvrent `CaPlaneRCLauncher.exe`. Le contrôle s'exécute avant Unreal et vérifie Windows 10/11 64 bits, SSE4.2, la mémoire vive, les cartes graphiques et leurs pilotes. Il tente réellement la création d'un périphérique DirectX 11 et DirectX 12 au niveau de fonctionnalités 11.0. Le projet distribue des shaders SM5 : le contrôle n'exige donc pas SM6 ou le ray tracing.

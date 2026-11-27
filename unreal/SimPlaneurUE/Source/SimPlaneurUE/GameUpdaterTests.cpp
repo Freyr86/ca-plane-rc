@@ -11,6 +11,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUpdateSelectionTest,"SimPlaneur.Updates.Releas
 bool FUpdateSelectionTest::RunTest(const FString&)
 {
     TestTrue(TEXT("Numeric version ordering"),FGameUpdater::Newer(TEXT("v0.5.10"),TEXT("0.5.9")));
+    TestTrue(TEXT("Maintenance revision follows base"),FGameUpdater::Newer(TEXT("v0.5.10-b"),TEXT("0.5.10")));
+    TestTrue(TEXT("Next maintenance revision"),FGameUpdater::Newer(TEXT("v0.5.10-c"),TEXT("0.5.10-b")));
+    TestTrue(TEXT("Future numbered version follows any revision"),FGameUpdater::Newer(TEXT("v0.5.11"),TEXT("0.5.10-z")));
+    TestFalse(TEXT("No revision downgrade"),FGameUpdater::Newer(TEXT("0.5.10"),TEXT("0.5.10-b")));
+    TestFalse(TEXT("No repeated revision"),FGameUpdater::Newer(TEXT("0.5.10-b"),TEXT("0.5.10-b")));
+    for(const TCHAR* Invalid:{TEXT("0.5.10-"),TEXT("0.5.10-beta"),TEXT("0.5.10-B"),TEXT("0.5.10-b/../evil"),TEXT("0.5.10.1")})
+        TestFalse(TEXT("Reject unsupported suffix or path"),FGameUpdater::Newer(Invalid,TEXT("0.5.9")));
     TestFalse(TEXT("No downgrade"),FGameUpdater::Newer(TEXT("0.5.6"),TEXT("0.5.7")));
     TestFalse(TEXT("No same-version installation"),FGameUpdater::Newer(TEXT("v0.5.7"),TEXT("0.5.7")));
     TestFalse(TEXT("Reject version path traversal"),FGameUpdater::Newer(TEXT("v1.2.3/../evil"),TEXT("0.5.7")));
@@ -18,6 +25,11 @@ bool FUpdateSelectionTest::RunTest(const FString&)
     FGameRelease R;
     TestTrue(TEXT("Read beta metadata"),FGameUpdater::SelectRelease(Json,TEXT("0.5.7"),R));
     TestEqual(TEXT("Select published beta installer"),R.Version,FString(TEXT("0.5.8")));
+    const FString Hotfix=Json.Replace(TEXT("0.5.8"),TEXT("0.5.10-b"));
+    FGameUpdater::SelectRelease(Hotfix,TEXT("0.5.10"),R);
+    TestEqual(TEXT("Select suffix installer with matching URL and digest"),R.Version,FString(TEXT("0.5.10-b")));
+    FGameUpdater::SelectRelease(Hotfix,TEXT("0.5.10-c"),R);
+    TestTrue(TEXT("Release selection never downgrades a suffix"),R.Version.IsEmpty());
     FGameUpdater::SelectRelease(Json.Replace(TEXT("\"draft\":false"),TEXT("\"draft\":true")),TEXT("0.5.7"),R);
     TestTrue(TEXT("Never expose drafts"),R.Version.IsEmpty());
     FGameUpdater::SelectRelease(Json.Replace(TEXT("https://github.com/"),TEXT("https://evil.example/")),TEXT("0.5.7"),R);

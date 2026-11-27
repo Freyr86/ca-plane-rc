@@ -2,16 +2,20 @@
   #error GameDir must point to the packaged Windows directory
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.9"
+  #define AppVersion "0.5.10"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\work\release"
+#endif
+#ifndef AppVersionNumber
+  #define AppVersionNumber "0.5.10.0"
 #endif
 
 [Setup]
 AppId={{52B9BAE4-7204-4D88-95EC-C2CD5F225820}
 AppName=Ça plane !
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersionNumber}
 AppPublisher=Freyr86
 AppPublisherURL=https://github.com/Freyr86/ca-plane-rc
 AppSupportURL=https://ca-plane-assistance.endlessbow16.chatgpt.site/

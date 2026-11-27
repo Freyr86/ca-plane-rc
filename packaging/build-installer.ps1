@@ -1,10 +1,15 @@
 param(
     [string]$EngineRoot = 'C:\Program Files\Epic Games\UE_5.8',
-    [string]$Version = '0.5.9',
+    [string]$Version = '0.5.10',
     [switch]$SkipPackage
 )
 $ErrorActionPreference = 'Stop'
+if ($Version -cnotmatch '^(\d{1,6}\.\d{1,6}\.\d{1,6})(?:-([a-z]))?$') { throw 'Version attendue : X.Y.Z ou X.Y.Z-b (suffixe a-z).' }
+$numericVersion = $Matches[1] + '.' + $(if ($Matches[2]) { [int][char]$Matches[2] - [int][char]'a' + 1 } else { 0 })
 $root = Split-Path $PSScriptRoot
+if (!(Select-String -LiteralPath (Join-Path $root 'unreal/SimPlaneurUE/Config/DefaultGame.ini') -Pattern ('^ProjectVersion=' + [regex]::Escape($Version) + '$') -Quiet)) {
+    throw 'ProjectVersion et la version de l installateur doivent correspondre, y compris le suffixe de correctif.'
+}
 $project = Join-Path $root 'unreal\SimPlaneurUE\SimPlaneurUE.uproject'
 $archive = Join-Path $root 'work\package'
 if (!$SkipPackage) {
@@ -27,7 +32,7 @@ $candidates = @(
 $compiler = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (!$compiler) { throw 'Installer Inno Setup 6, ou placer ISCC.exe dans tools\InnoSetup.' }
 $release = [IO.Directory]::CreateDirectory((Join-Path $root 'work\release')).FullName
-& $compiler "/DGameDir=$game" "/DAppVersion=$Version" "/DOutputDir=$release" (Join-Path $PSScriptRoot 'ca-plane-rc.iss')
+& $compiler "/DGameDir=$game" "/DAppVersion=$Version" "/DAppVersionNumber=$numericVersion" "/DOutputDir=$release" (Join-Path $PSScriptRoot 'ca-plane-rc.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Echec de creation de l installateur.' }
 $installer = Join-Path $release "CaPlaneRC-$Version-Windows-Setup.exe"
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
